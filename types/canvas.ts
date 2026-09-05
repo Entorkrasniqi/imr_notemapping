@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import type { JSONContent } from "@tiptap/react";
 
 /**
@@ -15,3 +15,10 @@ export type NoteNodeData = {
 };
 
 export type NoteNode = Node<NoteNodeData, "note">;
+
+/**
+ * A connection between two notes. No custom data of its own yet — plain
+ * React Flow edges, rendered through our `deletable` edge type (see
+ * `components/canvas/DeletableEdge.tsx`) for the delete-on-click affordance.
+ */
+export type BoardEdge = Edge<Record<string, never>, "deletable">;

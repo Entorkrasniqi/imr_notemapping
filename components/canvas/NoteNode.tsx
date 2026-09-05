@@ -2,10 +2,28 @@
 
 import { memo, useCallback, useMemo } from "react";
 import { generateHTML, type JSONContent } from "@tiptap/react";
-import { NodeResizer, useReactFlow, type NodeProps } from "@xyflow/react";
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  useReactFlow,
+  type NodeProps,
+} from "@xyflow/react";
 import type { NoteNode as NoteNodeType } from "@/types/canvas";
 import RichTextEditor from "@/components/editor/RichTextEditor";
 import { getNoteExtensions } from "@/lib/editor/extensions";
+
+// One handle per side. All four are `type="source"` on purpose: combined
+// with `connectionMode="loose"` on the board (see Board.tsx), this lets a
+// user start a connection from *or* drop it onto any side, in either
+// direction, without having to think about React Flow's source/target
+// distinction — a mind map doesn't have a "from" and "to" side of a note.
+const HANDLE_POSITIONS = [
+  { id: "top", position: Position.Top },
+  { id: "right", position: Position.Right },
+  { id: "bottom", position: Position.Bottom },
+  { id: "left", position: Position.Left },
+] as const;
 
 const EMPTY_DOC: JSONContent = { type: "doc", content: [{ type: "paragraph" }] };
 
@@ -71,7 +89,11 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
   );
 
   return (
-    <>
+    // `group` + `relative` let the connection handles fade in on hover via
+    // `group-hover`, while staying siblings of (not nested inside) the
+    // overflow-hidden card below so the handles never get clipped at the
+    // card's rounded corners.
+    <div className="group relative h-full w-full">
       {/* Draggable resize handles, shown only while this note is selected. */}
       <NodeResizer
         isVisible={selected}
@@ -80,6 +102,18 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
         lineClassName="!border-blue-400"
         handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border !border-blue-400 !bg-white"
       />
+
+      {HANDLE_POSITIONS.map((handle) => (
+        <Handle
+          key={handle.id}
+          id={handle.id}
+          type="source"
+          position={handle.position}
+          className={`!h-2.5 !w-2.5 !border !border-zinc-400 !bg-white !transition-opacity ${
+            selected ? "!opacity-100" : "!opacity-0 group-hover:!opacity-100"
+          }`}
+        />
+      ))}
 
       <div
         className={`flex h-full w-full flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-colors ${
@@ -112,7 +146,7 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

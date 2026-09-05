@@ -2,19 +2,34 @@
 
 import { useCallback, useRef } from "react";
 import {
+  addEdge,
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
+  useEdgesState,
   useNodesState,
   useReactFlow,
+  type Connection,
+  type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import NoteNode from "./NoteNode";
-import type { NoteNode as NoteNodeType } from "@/types/canvas";
+import DeletableEdge from "./DeletableEdge";
+import type { BoardEdge, NoteNode as NoteNodeType } from "@/types/canvas";
 
 const nodeTypes = { note: NoteNode };
+const edgeTypes = { deletable: DeletableEdge };
+
+// Applied to every edge created via a connection drag, so we don't have to
+// set `type`/`markerEnd` by hand each time in `onConnect`.
+const defaultEdgeOptions: DefaultEdgeOptions = {
+  type: "deletable",
+  markerEnd: { type: MarkerType.ArrowClosed, color: "#a1a1aa" },
+};
 
 const DEFAULT_NOTE_WIDTH = 240;
 const DEFAULT_NOTE_HEIGHT = 160;
@@ -50,11 +65,24 @@ function FlowCanvas() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 
-  // Phase 1 state is intentionally just React state in memory: no
-  // persistence yet (that's Phase 4), no backend (Phase 5). `useNodesState`
-  // is a small React Flow helper around useState that also gives us
-  // `onNodesChange`, which applies drag/select/resize/remove updates for us.
+  // State is intentionally just React state in memory: no persistence yet
+  // (that's Phase 4), no backend (Phase 5). `useNodesState`/`useEdgesState`
+  // are small React Flow helpers around useState that also give us
+  // `onNodesChange`/`onEdgesChange`, which apply drag/select/resize/remove
+  // updates for us.
   const [nodes, setNodes, onNodesChange] = useNodesState<NoteNodeType>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([]);
+
+  // Fired when a connection drag is released on a valid handle. `addEdge`
+  // is a small React Flow utility that appends the new edge (filling in an
+  // id, and anything from `defaultEdgeOptions`) without us hand-rolling
+  // that bookkeeping.
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((current) => addEdge(connection, current));
+    },
+    [setEdges],
+  );
 
   const addNoteAtScreenPoint = useCallback(
     (clientX: number, clientY: number) => {
@@ -99,9 +127,16 @@ function FlowCanvas() {
     >
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        edges={edges}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
+        // Every handle in NoteNode is `type="source"`; loose mode is what
+        // allows a source-to-source connection to form an edge at all.
+        connectionMode={ConnectionMode.Loose}
         // React Flow zooms in on double-click by default; we've repurposed
         // double-click to create a note instead, so that default must go.
         zoomOnDoubleClick={false}

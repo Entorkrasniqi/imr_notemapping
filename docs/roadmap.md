@@ -13,7 +13,7 @@ This tracks phase status. Each phase is scoped deliberately narrow — see
 - [x] **Phase 2 — Rich text.** Tiptap integrated into each note: bold,
       italic, underline, headings, bullet/numbered lists, alignment, text
       size, text color, highlight, undo/redo.
-- [ ] **Phase 3 — Connections.** Connection handles on notes, drag-to-connect
+- [x] **Phase 3 — Connections.** Connection handles on notes, drag-to-connect
       arrows, edge selection and deletion, edges stay attached when notes
       move.
 - [ ] **Phase 4 — Local persistence.** Board state (nodes + edges) survives
