@@ -38,15 +38,15 @@ actually demand them, not preemptively.
 │  ┌───────────────┐   ┌────────────────────────────────────┐ │
 │  │  Dashboard UI │   │              Board UI                │ │
 │  │ (list boards, │   │  ┌────────────┐  ┌─────────────────┐│ │
-│  │  create/rename│   │  │ React Flow │  │ Tiptap editor    ││ │
-│  │  /delete)     │   │  │ (canvas,   │  │ (rendered inside ││ │
-│  │               │   │  │  nodes,    │  │  each note node) ││ │
-│  │               │   │  │  edges,    │  │                  ││ │
-│  │               │   │  │  viewport) │  │                  ││ │
-│  │               │   │  └─────┬──────┘  └────────┬─────────┘│ │
-│  └───────┬───────┘   └────────┼──────────────────┼──────────┘ │
-│          │                    │  local component state         │
-└──────────┼────────────────────┼──────────────────┼─────────────┘
+│  │  create/rename│   │  │ React Flow │  │ Tiptap editor   ││ │
+│  │  /delete)     │   │  │ (canvas,   │  │ (inline in the  ││ │
+│  │               │   │  │  nodes,    │  │  note; toolbar  ││ │
+│  │               │   │  │  edges,    │  │  floats below   ││ │
+│  │               │   │  │  viewport) │  │  the canvas)    ││ │
+│  │               │   │  └─────┬──────┘  └────────┬────────┘│ │
+│  └───────┬───────┘   └────────┼──────────────────┼─────────┘ │
+│          │                    │  local component state       │
+└──────────┼────────────────────┼──────────────────┼───────────┘
            │                    │  (debounced autosave)
            ▼                    ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -94,8 +94,14 @@ Guiding rules for this layer:
   position/size/data), not duplicated into a second parallel state tree.
   Each node's `data` field holds a reference to its Tiptap JSON content.
 - **Editor state lives in Tiptap**, scoped to the node currently being
-  edited. We don't keep every node's editor instance mounted at once at
-  first — only the active one — to keep the canvas fast with many notes.
+  edited. Text is edited in place, inside whichever note card is
+  selected — only one note is ever selected at a time, so at most one live
+  editor instance exists; every other note renders static, read-only
+  content instead. That editor's *formatting toolbar*, though, lives
+  outside the canvas entirely, in a small floating dock, and finds the
+  active editor through a small shared context rather than through props
+  (`lib/editor/active-editor-context.tsx`) — the text and the controls
+  for it are no longer in the same part of the component tree.
 - **Persistence is a separate concern from interaction.** Local phases
   (1–4) keep everything in memory/localStorage. Supabase is introduced in
   Phase 5 as a sync layer underneath the same React Flow state, not as a

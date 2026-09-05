@@ -44,6 +44,21 @@ body {
   margin-top: 0;
 }
 
+/*
+ * An Apple Notes-style "title line": whatever's typed on a note's very
+ * first line renders larger and bold, like a title, with no formatting
+ * action needed from the user. `:first-child` only ever matches the first
+ * top-level block — pressing Enter starts a new one, which this rule
+ * doesn't touch — so the effect is exactly "first line looks like a
+ * title, every line after it is normal body text." Higher specificity
+ * than the h1/h2/h3 rules below (three class-level selectors vs. two),
+ * so it still wins if the first line happens to be a heading.
+ */
+.prose-note.tiptap > *:first-child {
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
 .prose-note.tiptap h1,
 .prose-note.tiptap h2,
 .prose-note.tiptap h3 {
