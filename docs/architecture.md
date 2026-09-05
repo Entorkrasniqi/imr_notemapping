@@ -1,0 +1,148 @@
+# NoteMap — System Architecture
+
+Status: Phase 0 (planning). No application code exists yet.
+
+## 1. What we're building
+
+NoteMap is an infinite-canvas mind-mapping tool where each "node" on the
+canvas is a rich-text note. Notes can be moved, resized, and connected with
+arrows. The board pans and zooms like a whiteboard. Boards are private,
+persisted per-user, and gated behind auth.
+
+This document describes the shape of the system *before* code exists, so
+that later phases have a map to build against instead of accreting
+decisions ad hoc.
+
+## 2. Tech stack and why
+
+| Layer | Choice | Why |
+|---|---|---|
+| Framework | Next.js (App Router) | One codebase for marketing/auth pages (server-rendered, fast) and the heavily client-side canvas app. File-based routing keeps `/dashboard`, `/board/[id]`, `/login` simple. |
+| Language | TypeScript (strict) | The data model (nodes, edges, positions, content) flows through many layers — canvas library, editor, DB. Types catch mismatches (e.g. `position_x` as string vs number) at compile time instead of at runtime on a canvas. |
+| Styling | Tailwind CSS | Utility classes keep small, numerous UI pieces (toolbar buttons, handles, dashboard cards) fast to build without inventing a component-styling convention from scratch. |
+| Canvas / graph | React Flow (`@xyflow/react`) | Purpose-built for exactly this: pannable/zoomable canvas, draggable/resizable nodes, connectable edges with handles, viewport state, minimap. Reinventing this (hit-testing, coordinate transforms, edge routing) is a multi-week project on its own and not the point of this exercise. |
+| Rich text | Tiptap | A ProseMirror wrapper that gives us a document model (JSON, not raw HTML strings) with clean extension points for bold/italic/headings/lists/color/highlight. Storing structured JSON (not HTML) avoids sanitization/XSS headaches later. |
+| Backend / DB | Supabase (Postgres + Auth + Row Level Security) | Gives us a real relational database, auth, and authorization (RLS) without hand-rolling a backend server. The Supabase JS client can talk to Postgres directly from the browser because RLS — not application code — is the security boundary. This matches the "don't rely on frontend checks" requirement directly. |
+
+Explicitly **not** introduced yet: Zustand or Redux, Stripe, realtime
+collaboration, ORMs (Prisma etc.). Supabase's JS client plus React state is
+enough for the current phases; we add libraries when a phase's requirements
+actually demand them, not preemptively.
+
+## 3. High-level shape
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Browser (client)                     │
+│                                                               │
+│  ┌───────────────┐   ┌────────────────────────────────────┐ │
+│  │  Dashboard UI │   │              Board UI                │ │
+│  │ (list boards, │   │  ┌────────────┐  ┌─────────────────┐│ │
+│  │  create/rename│   │  │ React Flow │  │ Tiptap editor    ││ │
+│  │  /delete)     │   │  │ (canvas,   │  │ (rendered inside ││ │
+│  │               │   │  │  nodes,    │  │  each note node) ││ │
+│  │               │   │  │  edges,    │  │                  ││ │
+│  │               │   │  │  viewport) │  │                  ││ │
+│  │               │   │  └─────┬──────┘  └────────┬─────────┘│ │
+│  └───────┬───────┘   └────────┼──────────────────┼──────────┘ │
+│          │                    │  local component state         │
+└──────────┼────────────────────┼──────────────────┼─────────────┘
+           │                    │  (debounced autosave)
+           ▼                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Supabase (hosted service)                │
+│  ┌───────────┐   ┌─────────────────────────────────────┐    │
+│  │   Auth    │   │        Postgres (with RLS)           │    │
+│  │ (sessions,│   │  boards / nodes / edges / profiles   │    │
+│  │  JWT)     │   │  policies: auth.uid() = owner         │    │
+│  └───────────┘   └─────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Next.js's role here is mostly **routing and page shell** — the dashboard
+and board pages, the auth pages, layout/navigation. It is not acting as a
+traditional backend-for-frontend with its own API routes for CRUD, because
+Supabase + RLS lets the browser talk to Postgres safely. We'll introduce a
+Next.js server-side route only where it's genuinely needed later (e.g. a
+Stripe webhook, which must run server-side with a secret key).
+
+## 4. Frontend architecture
+
+Directory layout (created incrementally as phases need it — not all of
+this exists after Phase 0):
+
+```
+/app                    Next.js App Router routes
+  /login
+  /signup
+  /dashboard
+  /board/[boardId]
+/components
+  /canvas                React Flow wrapper, custom node/edge components
+  /editor                Tiptap editor + toolbar
+  /dashboard             Board list, board card, create/rename/delete UI
+/lib
+  /supabase              Supabase client factory (browser + server variants)
+/hooks                   Reusable hooks (e.g. useBoard, useAutosave)
+/types                   Shared TypeScript types (Node content, Board, Edge)
+/docs                    This document and friends
+```
+
+Guiding rules for this layer:
+
+- **Canvas state lives in React Flow's model** (`nodes`, `edges` arrays with
+  position/size/data), not duplicated into a second parallel state tree.
+  Each node's `data` field holds a reference to its Tiptap JSON content.
+- **Editor state lives in Tiptap**, scoped to the node currently being
+  edited. We don't keep every node's editor instance mounted at once at
+  first — only the active one — to keep the canvas fast with many notes.
+- **Persistence is a separate concern from interaction.** Local phases
+  (1–4) keep everything in memory/localStorage. Supabase is introduced in
+  Phase 5 as a sync layer underneath the same React Flow state, not as a
+  replacement for it. This is why Phase 4 (local persistence) matters: it
+  forces us to nail serialization before a network is involved.
+
+## 5. Data flow (once persistence exists)
+
+1. User loads `/board/[boardId]`.
+2. Page fetches the board's nodes/edges from Supabase (RLS ensures only
+   rows where the board belongs to the signed-in user come back).
+3. Data is converted into React Flow's `Node[]`/`Edge[]` shape and used to
+   initialize the canvas.
+4. User interacts (moves a note, edits text, draws a connection). React
+   Flow's local state updates immediately (no network round-trip needed to
+   *see* the change — this is what makes it feel fast).
+5. Changes are autosaved to Supabase on a debounce (e.g. after ~500ms of
+   inactivity, or on drag-end/blur), not on every pixel of movement.
+6. Row Level Security policies enforce, at the database level, that this
+   write can only affect rows owned by the authenticated user — so even if
+   client code had a bug, another user's data can't be read or corrupted.
+
+## 6. Zoom-based rendering
+
+React Flow exposes the current zoom level via its viewport state. Phase 1
+only needs *correct* pan/zoom (nodes stay where they are, content stays
+readable, nothing breaks at extreme zoom). Any "simplify content at low
+zoom" behavior (per the mockups in the brief) is a later refinement layered
+on top of that same viewport value — we will not build it until basic
+zoom works, per the brief's own instruction not to over-engineer this
+early.
+
+## 7. Future scalability (designed for, not built now)
+
+- **Subscriptions**: the `profiles` table (see `database.md`) carries a
+  `plan` field now, defaulting to `'free'`. Adding Stripe later means
+  adding a webhook route and flipping this field — not restructuring the
+  schema or the board-limit check.
+- **Sharing / collaboration**: boards are owned by a single `user_id` now.
+  A future `board_members` join table can be added without touching the
+  `boards`/`nodes`/`edges` tables themselves.
+- **Realtime collaboration**: Supabase Realtime can subscribe to
+  `nodes`/`edges` table changes later; because persistence already flows
+  through those tables (not a bespoke format), enabling Realtime is additive.
+
+## 8. What we are *not* doing yet
+
+No Supabase project, no auth, no database calls, no Tiptap, no React Flow
+installed. Phase 0 is documentation only, so decisions are visible and
+questionable before they're expensive to change.
