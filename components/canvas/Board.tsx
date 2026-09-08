@@ -29,7 +29,19 @@ import { ActiveEditorProvider, useActiveEditor } from "@/lib/editor/active-edito
 import { RecordBeforeChangeProvider, useBoardHistory } from "@/hooks/useBoardHistory";
 import { useSupabaseBoardSync } from "@/hooks/useSupabaseBoardSync";
 import { createClient } from "@/lib/supabase/client";
+import { useTheme, type Theme } from "@/lib/theme/theme-context";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 import type { BoardEdge, NoteNode as NoteNodeType } from "@/types/canvas";
+
+// React Flow's <Background>/<MiniMap> take raw color props, not
+// classNames — there's no CSS selector reaching into their internals the
+// way `dark:`/`blueprint:` utilities do everywhere else in this app, so
+// each theme's canvas dot color and minimap tint has to be picked in JS.
+const CANVAS_COLORS: Record<Theme, { dots: string; minimapNode: string; minimapMask: string }> = {
+  light: { dots: "#d4d4d8", minimapNode: "#d4d4d8", minimapMask: "rgba(244, 244, 245, 0.6)" },
+  dark: { dots: "#3f3f46", minimapNode: "#52525b", minimapMask: "rgba(9, 9, 11, 0.6)" },
+  blueprint: { dots: "rgba(255, 255, 255, 0.25)", minimapNode: "rgba(255, 255, 255, 0.4)", minimapMask: "rgba(15, 48, 87, 0.6)" },
+};
 
 const nodeTypes = { note: NoteNode };
 const edgeTypes = { deletable: DeletableEdge };
@@ -85,6 +97,8 @@ function FlowCanvas({ boardId }: { boardId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const { editingNoteId, setEditingNoteId } = useActiveEditor();
+  const { theme } = useTheme();
+  const canvasColors = CANVAS_COLORS[theme];
 
   // React state remains what the canvas actually renders from — Supabase
   // is a sync target underneath it, not a replacement for it (see
@@ -225,7 +239,14 @@ function FlowCanvas({ boardId }: { boardId: string }) {
     );
   }, [editingNoteId, setNodes]);
 
-  const handleNodeDoubleClick = useCallback<NodeMouseHandler>(
+  // A single click opens a note for editing. This is safe against
+  // dragging because React Flow already tells the two apart itself:
+  // `onNodeClick` only fires for a genuine click (mouseup near where the
+  // mousedown started), while an actual drag gesture (mousedown, then
+  // move past a small threshold) fires the drag handlers instead and
+  // never reaches this one — so grabbing a note and moving it still
+  // works exactly as before.
+  const handleNodeClick = useCallback<NodeMouseHandler>(
     (_event, node) => {
       setEditingNoteId(node.id);
     },
@@ -324,7 +345,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
     <RecordBeforeChangeProvider value={recordBeforeChange}>
       <div
         ref={wrapperRef}
-        className="relative h-screen w-screen bg-zinc-50"
+        className="relative h-screen w-screen bg-zinc-50 dark:bg-zinc-950 blueprint:bg-background"
         onDoubleClick={handleWrapperDoubleClick}
         onDragOver={handleWrapperDragOver}
         onDrop={handleWrapperDrop}
@@ -335,7 +356,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
-          onNodeDoubleClick={handleNodeDoubleClick}
+          onNodeClick={handleNodeClick}
           onNodeDragStart={recordBeforeChange}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -351,7 +372,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           maxZoom={2}
           fitView={false}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d4d4d8" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={canvasColors.dots} />
           <Controls showInteractive={false} />
           {/* Default position (bottom-right) pairs with Controls' default
               (bottom-left) below — the conventional, non-colliding layout
@@ -360,32 +381,33 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           <MiniMap
             pannable
             zoomable
-            nodeColor="#d4d4d8"
-            maskColor="rgba(244, 244, 245, 0.6)"
+            nodeColor={canvasColors.minimapNode}
+            maskColor={canvasColors.minimapMask}
           />
         </ReactFlow>
 
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-4">
           <Link
             href="/"
-            className="pointer-events-auto rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+            className="pointer-events-auto rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
             title="Back to your boards"
           >
             ← NoteMap
           </Link>
           <div className="pointer-events-auto flex items-center gap-2">
+            <ThemeToggle />
             <button
               type="button"
               onClick={handleFitViewClick}
               title="Fit all notes in view"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
             >
               Fit view
             </button>
             <button
               type="button"
               onClick={handleAddNoteButtonClick}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:text-white blueprint:hover:bg-white/10"
             >
               + Add note
             </button>
@@ -393,7 +415,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
               type="button"
               onClick={handleLogoutClick}
               title="Log out"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
             >
               Log out
             </button>
@@ -402,18 +424,22 @@ function FlowCanvas({ boardId }: { boardId: string }) {
 
         {boardStatus === "loading" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-zinc-400">Loading your board…</p>
+            <p className="text-sm text-zinc-400 dark:text-white/40 blueprint:text-white/60">
+              Loading your board…
+            </p>
           </div>
         )}
 
         {boardStatus === "error" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80">
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80 dark:bg-zinc-950/80 blueprint:bg-background/90">
             <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-zinc-600">Couldn&apos;t reach the database.</p>
+              <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
+                Couldn&apos;t reach the database.
+              </p>
               <button
                 type="button"
                 onClick={retryBoardLoad}
-                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
               >
                 Try again
               </button>
@@ -425,14 +451,14 @@ function FlowCanvas({ boardId }: { boardId: string }) {
             this same user earlier) while something still links to its
             URL — see BoardNotFoundError in lib/supabase/board-sync.ts. */}
         {boardStatus === "not-found" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80">
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80 dark:bg-zinc-950/80 blueprint:bg-background/90">
             <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
                 This board doesn&apos;t exist, or isn&apos;t yours.
               </p>
               <Link
                 href="/"
-                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
               >
                 Back to your boards
               </Link>
@@ -446,7 +472,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
             empty," not "we don't know yet." */}
         {boardStatus === "ready" && nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-zinc-400 dark:text-white/40 blueprint:text-white/60">
               Double-click anywhere, or press “+ Add note”, to create your first note.
             </p>
           </div>

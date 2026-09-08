@@ -25,7 +25,7 @@ export default function FormattingDock() {
         // treated as "double-click empty canvas" (this dock sits outside
         // any `.react-flow__node`).
         data-formatting-dock=""
-        className="pointer-events-auto flex max-h-[10vh] max-w-[min(90vw,44rem)] items-center overflow-x-auto rounded-2xl border border-zinc-200/80 bg-white/85 px-2 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-md"
+        className="pointer-events-auto flex max-h-[10vh] max-w-[min(90vw,44rem)] items-center overflow-x-auto rounded-2xl border border-zinc-200/80 bg-white/85 px-2 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-md dark:border-white/10 dark:bg-zinc-900/85 blueprint:border-white/20 blueprint:bg-[#0f3057]/85"
       >
         <Toolbar editor={activeEditor} />
       </div>

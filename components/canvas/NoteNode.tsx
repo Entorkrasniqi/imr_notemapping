@@ -23,28 +23,44 @@ import RichTextEditor from "@/components/editor/RichTextEditor";
 // state until then.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
-// Twenty fixed connection points around each note: all four corners, plus
-// four evenly spaced points along each of the four edges. When you release
+// Forty fixed connection points around each note: all four corners, plus
+// nine evenly spaced points along each of the four edges. When you release
 // a drag near a note, React Flow snaps to whichever registered handle is
 // geometrically closest to the cursor (see `getClosestHandle` in
 // @xyflow/system) — more points spread around the whole perimeter is what
 // makes "closest handle" track where a user actually grabbed or released,
 // rather than snapping to one of a handful of coarse spots.
 //
-// They sit in a small ring just *outside* the note's border rather than
-// on it, because the border itself already belongs to NodeResizer below —
-// its corner squares and its full-length edge-drag lines both live
-// exactly on that line. Offsetting our handles clear of it means the two
-// interactions (resize vs. connect) never compete for the same pixels.
-const HANDLE_SIZE = 10; // px — each handle's own small hit/visual box
+// The nine-per-edge count and their 16px hit box were bumped up from an
+// earlier four-per-edge/10px version, which left grabbable points far
+// enough apart that starting a connection needed real pixel precision —
+// since the box itself is invisible either way (the note's one visible
+// connection cue is the shared outline further down, not these), there's
+// no visual cost to a bigger, denser grab area along the edges.
+//
+// The four corner handles deliberately did *not* get the same size bump,
+// for a reason discovered by testing it: corners are exactly where
+// NodeResizer's own resize-handle squares live too, and a corner
+// connection handle sized to match the edges' 16px would sit on top of
+// and swallow clicks meant for that 10px resize handle underneath it
+// (confirmed — enlarging both broke resizing entirely). Keeping corners
+// at their original, smaller size is what keeps the two interactions
+// from competing for the same pixels; nothing else claims the mid-edge
+// pixels, so those are free to be as generous as helps.
 const HANDLE_GAP = 6; // px — distance from the border to a handle's center
-const OUTWARD = `-${HANDLE_GAP + HANDLE_SIZE / 2}px`;
-const INWARD = `calc(100% + ${HANDLE_GAP - HANDLE_SIZE / 2}px)`;
+const CORNER_HANDLE_SIZE = 10;
+const EDGE_HANDLE_SIZE = 16;
 
+function outward(size: number): string {
+  return `-${HANDLE_GAP + size / 2}px`;
+}
+function inward(size: number): string {
+  return `calc(100% + ${HANDLE_GAP - size / 2}px)`;
+}
 /** A CSS position (as a percentage of the note's own size) for a handle
  * centered exactly on the given fraction `t` (0–1) along an edge. */
-function edgeFraction(t: number): string {
-  return `calc(${t * 100}% - ${HANDLE_SIZE / 2}px)`;
+function edgeFraction(t: number, size: number): string {
+  return `calc(${t * 100}% - ${size / 2}px)`;
 }
 
 type HandleSpec = {
@@ -52,24 +68,27 @@ type HandleSpec = {
   position: Position;
   top: string;
   left: string;
+  size: number;
 };
 
 const CORNERS: HandleSpec[] = [
-  { id: "top-left", position: Position.Top, top: OUTWARD, left: OUTWARD },
-  { id: "top-right", position: Position.Top, top: OUTWARD, left: INWARD },
-  { id: "bottom-left", position: Position.Bottom, top: INWARD, left: OUTWARD },
-  { id: "bottom-right", position: Position.Bottom, top: INWARD, left: INWARD },
+  { id: "top-left", position: Position.Top, top: outward(CORNER_HANDLE_SIZE), left: outward(CORNER_HANDLE_SIZE), size: CORNER_HANDLE_SIZE },
+  { id: "top-right", position: Position.Top, top: outward(CORNER_HANDLE_SIZE), left: inward(CORNER_HANDLE_SIZE), size: CORNER_HANDLE_SIZE },
+  { id: "bottom-left", position: Position.Bottom, top: inward(CORNER_HANDLE_SIZE), left: outward(CORNER_HANDLE_SIZE), size: CORNER_HANDLE_SIZE },
+  { id: "bottom-right", position: Position.Bottom, top: inward(CORNER_HANDLE_SIZE), left: inward(CORNER_HANDLE_SIZE), size: CORNER_HANDLE_SIZE },
 ];
 
-// Four interior points per edge (at 20/40/60/80% along it, corners
-// excluded since those are already covered above) — 4 + 4 × 4 = 20 total.
-const EDGE_FRACTIONS = [0.2, 0.4, 0.6, 0.8];
+// Nine interior points per edge (every 10%, corners excluded since those
+// are already covered above) — 4 + 4 × 9 = 40 total. At the default
+// 240px note width that's a handle roughly every 24px, each with a 16px
+// hit box — an 8px gap at worst, down from the old ~38px one.
+const EDGE_FRACTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
 
 const EDGES: HandleSpec[] = EDGE_FRACTIONS.flatMap((t) => [
-  { id: `top-${t}`, position: Position.Top, top: OUTWARD, left: edgeFraction(t) },
-  { id: `bottom-${t}`, position: Position.Bottom, top: INWARD, left: edgeFraction(t) },
-  { id: `left-${t}`, position: Position.Left, top: edgeFraction(t), left: OUTWARD },
-  { id: `right-${t}`, position: Position.Right, top: edgeFraction(t), left: INWARD },
+  { id: `top-${t}`, position: Position.Top, top: outward(EDGE_HANDLE_SIZE), left: edgeFraction(t, EDGE_HANDLE_SIZE), size: EDGE_HANDLE_SIZE },
+  { id: `bottom-${t}`, position: Position.Bottom, top: inward(EDGE_HANDLE_SIZE), left: edgeFraction(t, EDGE_HANDLE_SIZE), size: EDGE_HANDLE_SIZE },
+  { id: `left-${t}`, position: Position.Left, top: edgeFraction(t, EDGE_HANDLE_SIZE), left: outward(EDGE_HANDLE_SIZE), size: EDGE_HANDLE_SIZE },
+  { id: `right-${t}`, position: Position.Right, top: edgeFraction(t, EDGE_HANDLE_SIZE), left: inward(EDGE_HANDLE_SIZE), size: EDGE_HANDLE_SIZE },
 ]);
 
 // All twenty are `type="source"` on purpose: combined with
@@ -93,7 +112,7 @@ const HANDLE_POSITIONS: HandleSpec[] = [...CORNERS, ...EDGES];
  * rest of the body. A canvas full of notes each showing their full text
  * reads as noise; showing just the title on the canvas and the full body
  * only once a note is opened for editing is what keeps it a mind map
- * instead of a wall of paragraphs. Double-clicking to edit still reveals
+ * instead of a wall of paragraphs. Clicking to edit still reveals
  * everything, unabridged — this component is never the thing rendering
  * while a note is being edited.
  */
@@ -112,9 +131,17 @@ function NotePreview({ content }: { content: JSONContent | null }) {
     [titleDoc, extensions],
   );
 
+  // Centered — both axes — while closed, unlike the live editor (which
+  // stays left-aligned, top-down, like any normal text editor). A closed
+  // note reads more like a label/title card at a glance; the moment it's
+  // opened for actual editing, text needs to behave like text again, so
+  // RichTextEditor below is deliberately left untouched.
   if (isEmptyContent(titleDoc)) {
     return (
-      <p className="p-2 text-sm text-zinc-400" title="Double-click to open">
+      <p
+        className="flex h-full items-center justify-center p-2 text-center text-sm text-zinc-400 dark:text-white/30 blueprint:text-white/40"
+        title="Click to open"
+      >
         Type something…
       </p>
     );
@@ -122,20 +149,35 @@ function NotePreview({ content }: { content: JSONContent | null }) {
 
   return (
     <div
-      className="tiptap prose-note h-full overflow-hidden p-2 text-sm text-zinc-800"
-      title="Double-click to open"
+      className="tiptap prose-note relative flex h-full items-center justify-center overflow-hidden p-2 text-center text-sm text-zinc-800 dark:text-white/85 blueprint:text-white"
+      title="Click to open"
     >
+      {/* The "···" hint below is deliberately taken out of normal flex
+          flow (absolutely positioned) rather than stacked as a second
+          child next to the title — an earlier version had both as
+          siblings in a column flex, and when their combined height
+          exceeded this box (routine once a note has both a title and a
+          hint, in the fixed-height collapsed state), centering an
+          overflowing block crops it symmetrically from *both* ends,
+          which sliced straight through the top of the title text. With
+          only the title as a normal-flow child, `items-center` centers
+          it against the *whole* box height, and the hint just floats
+          near the bottom on top of it, never competing for the same
+          vertical space. */}
       <div
-        className="note-title-line"
+        className="note-title-line w-full"
         // Safe here: `html` is generated from our own JSON schema (via
         // Tiptap's `generateHTML`), never from raw user-supplied HTML.
         dangerouslySetInnerHTML={{ __html: html }}
       />
       {hasMoreContent && (
         // A small hint that there's more inside, without revealing any of
-        // it — just enough to tell someone double-clicking isn't opening
-        // an empty note.
-        <p className="mt-0.5 text-zinc-300" aria-hidden="true">
+        // it — just enough to tell someone clicking to open it isn't
+        // opening an empty note.
+        <p
+          className="pointer-events-none absolute inset-x-0 bottom-0 text-zinc-300 dark:text-white/20 blueprint:text-white/30"
+          aria-hidden="true"
+        >
           ···
         </p>
       )}
@@ -154,12 +196,16 @@ function NotePreview({ content }: { content: JSONContent | null }) {
  */
 function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
   const { updateNodeData, deleteElements } = useReactFlow();
-  // `selected` (single click) only controls the highlight and the
-  // connection handles below — it does *not* decide whether the live
-  // editor is mounted. That's `isEditing` (double-click), a deliberate,
-  // separate action. Conflating the two used to mean a merely-selected
-  // note became almost entirely `nodrag` the moment you clicked it once,
-  // which is what made dragging it feel stuck — see ActiveEditorContext.
+  // `selected` and `isEditing` are still two separate pieces of state —
+  // React Flow's own node selection vs. this app's `editingNoteId` — even
+  // though a single click now sets both at once (see Board.tsx's
+  // `handleNodeClick`). A note that's already open for editing has
+  // `nodrag` on its live editor content (RichTextEditor), so a *second*,
+  // separate click-and-drag gesture aimed at its text won't move it —
+  // same as clicking into a text field in most note apps. Dragging a
+  // still-closed note works normally (mousedown-and-move on the preview
+  // is never `nodrag`), and an already-open note can still be dragged by
+  // its padding — see the comment on that wrapper below.
   const { editingNoteId, activeEditor } = useActiveEditor();
   const isEditing = editingNoteId === id;
   const recordBeforeChange = useRecordBeforeChange();
@@ -261,8 +307,8 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
         isVisible={isEditing}
         minWidth={220}
         minHeight={140}
-        lineClassName="!border-blue-400"
-        handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border !border-blue-400 !bg-white"
+        lineClassName="!border-blue-400 blueprint:!border-white"
+        handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border !border-blue-400 !bg-white blueprint:!border-white blueprint:!bg-[#0f3057]"
         onResizeStart={recordBeforeChange}
       />
 
@@ -276,12 +322,38 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           // own per-side positioning without needing `!important` — a
           // plain (non-important) inline style always beats a plain
           // stylesheet rule, regardless of which stylesheet loaded last.
-          style={{ top: handle.top, left: handle.left, transform: "none" }}
-          className={`!h-2.5 !w-2.5 !rounded-full !border !border-zinc-400 !bg-white !transition-opacity ${
-            selected ? "!opacity-100" : "!opacity-0 group-hover:!opacity-100"
-          }`}
+          // `width`/`height` are inline too, not Tailwind classes, since
+          // corner and edge handles now deliberately differ in size (see
+          // CORNER_HANDLE_SIZE/EDGE_HANDLE_SIZE above) — a fixed `!h-*
+          // !w-*` class pair couldn't express that per-handle difference.
+          style={{
+            top: handle.top,
+            left: handle.left,
+            transform: "none",
+            width: handle.size,
+            height: handle.size,
+          }}
+          // Invisible on purpose — these 40 points are still exactly what
+          // React Flow drags to/snaps against (see the comment above),
+          // but the outline below is what a user actually sees, as one
+          // continuous connectable frame rather than 40 separate marks.
+          className="!rounded-none !border-none !bg-transparent"
         />
       ))}
+
+      {/* The visual stand-in for all forty handles above: one unbroken
+          rounded-rectangle line around the note, so every edge — top and
+          bottom included, not just the sides — reads as equally
+          "connect from here," with rounded corners carrying the line
+          smoothly from one edge into the next instead of meeting at a
+          sharp joint. `-inset-1.5` (6px) matches HANDLE_GAP exactly, so
+          this sits right on top of the ring the invisible handles above
+          already occupy. */}
+      <div
+        className={`pointer-events-none absolute -inset-1.5 rounded-xl border-2 border-zinc-400 transition-opacity dark:border-white/50 blueprint:border-white/70 ${
+          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+      />
 
       {/* No background, border, or shadow here on purpose: a note is just
           its text, floating directly on the canvas — the deliberately
@@ -294,7 +366,7 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           it isn't. */}
       <div
         className={`relative flex h-full w-full flex-col overflow-hidden outline-2 outline-offset-4 outline-dashed transition-[outline-color] ${
-          isDragOver ? "outline-blue-400" : "outline-transparent"
+          isDragOver ? "outline-blue-400 blueprint:outline-white" : "outline-transparent"
         }`}
       >
         {selected && (
@@ -305,7 +377,7 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           <button
             type="button"
             onClick={handleDelete}
-            className="nodrag absolute right-1.5 top-1.5 z-10 rounded p-1 text-xs leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+            className="nodrag absolute right-1.5 top-1.5 z-10 rounded p-1 text-xs leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/80 blueprint:text-white/50 blueprint:hover:bg-white/10 blueprint:hover:text-white"
             aria-label="Delete note"
             title="Delete note"
           >
@@ -313,11 +385,13 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           </button>
         )}
 
-        {/* Double-click to edit; single click/select alone leaves this as
-            the read-only preview so the note stays fully draggable. Its
-            formatting toolbar lives outside the canvas, in
-            `FormattingDock`, which finds this editor via
-            `ActiveEditorContext` rather than through props.
+        {/* A single click opens this for editing (see Board.tsx's
+            `handleNodeClick`) — a real drag gesture never reaches that
+            handler, since React Flow only fires a node's click callback
+            when the pointer didn't move past its own drag threshold, so
+            dragging the note is unaffected. Its formatting toolbar lives
+            outside the canvas, in `FormattingDock`, which finds this
+            editor via `ActiveEditorContext` rather than through props.
 
             The `p-3` here still matters while editing, even with no
             visible border to speak of: RichTextEditor marks its own

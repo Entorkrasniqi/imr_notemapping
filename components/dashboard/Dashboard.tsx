@@ -13,6 +13,7 @@ import {
   renameBoard,
   type BoardSummary,
 } from "@/lib/supabase/boards";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -114,11 +115,11 @@ function LogoMark() {
 
 function BoardCardSkeleton() {
   return (
-    <div className="animate-pulse overflow-hidden rounded-2xl border border-zinc-200/70 bg-white">
-      <div className="h-20 bg-zinc-100" />
+    <div className="animate-pulse overflow-hidden rounded-2xl border border-zinc-200/70 bg-white dark:border-white/10 dark:bg-white/5 blueprint:border-white/20 blueprint:bg-white/5">
+      <div className="h-20 bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
       <div className="flex flex-col gap-2 p-4">
-        <div className="h-3.5 w-2/3 rounded-full bg-zinc-100" />
-        <div className="h-2.5 w-1/2 rounded-full bg-zinc-100" />
+        <div className="h-3.5 w-2/3 rounded-full bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
+        <div className="h-2.5 w-1/2 rounded-full bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
       </div>
     </div>
   );
@@ -252,21 +253,22 @@ export default function Dashboard() {
   const usageFraction = Math.min(boards.length / FREE_PLAN_BOARD_LIMIT, 1);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fafafa,_#f4f4f5_60%)]">
-      <header className="sticky top-0 z-10 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md">
+    <div className="blueprint-grid min-h-screen bg-[radial-gradient(circle_at_top,_#fafafa,_#f4f4f5_60%)] dark:bg-[radial-gradient(circle_at_top,_#18181b,_#09090b_60%)] blueprint:bg-background">
+      <header className="sticky top-0 z-10 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40 blueprint:border-white/15 blueprint:bg-[#0f3057]/70">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4 sm:px-8">
           <div className="flex items-center gap-2.5">
             <LogoMark />
-            <span className="text-[15px] font-semibold tracking-tight text-zinc-900">
+            <span className="text-[15px] font-semibold tracking-tight text-zinc-900 dark:text-white blueprint:text-white">
               NoteMap
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase ${
                 isPro
-                  ? "bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200"
-                  : "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-200"
+                  ? "bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:from-amber-500/20 dark:to-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30 blueprint:from-amber-400/20 blueprint:to-amber-400/10 blueprint:text-amber-200 blueprint:ring-amber-300/30"
+                  : "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-200 dark:bg-white/5 dark:text-white/50 dark:ring-white/10 blueprint:bg-white/10 blueprint:text-white/60 blueprint:ring-white/20"
               }`}
             >
               {isPro ? "Pro" : "Free"}
@@ -274,7 +276,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:text-zinc-900"
+              className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white blueprint:border-white/20 blueprint:bg-white/5 blueprint:text-white/70 blueprint:hover:border-white/40 blueprint:hover:text-white"
             >
               Log out
             </button>
@@ -285,19 +287,21 @@ export default function Dashboard() {
       <main className="mx-auto max-w-5xl px-6 py-12 sm:px-8">
         <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-[28px] font-semibold tracking-tight text-zinc-900">
+            <h1 className="text-[28px] font-semibold tracking-tight text-zinc-900 dark:text-white blueprint:font-mono blueprint:text-white">
               Your boards
             </h1>
-            <p className="mt-1.5 text-sm text-zinc-500">
+            <p className="mt-1.5 text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
               {isPro
                 ? "Unlimited boards on the Pro plan."
                 : `${boards.length} of ${FREE_PLAN_BOARD_LIMIT} boards used on the free plan.`}
             </p>
             {!isPro && (
-              <div className="mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-zinc-200/70">
+              <div className="mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-zinc-200/70 dark:bg-white/10 blueprint:bg-white/15">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    atLimit ? "bg-amber-500" : "bg-zinc-800"
+                    atLimit
+                      ? "bg-amber-500"
+                      : "bg-zinc-800 dark:bg-white blueprint:bg-white"
                   }`}
                   style={{ width: `${usageFraction * 100}%` }}
                 />
@@ -310,7 +314,7 @@ export default function Dashboard() {
             onClick={handleCreateBoard}
             disabled={isCreating || atLimit || status !== "ready"}
             title={atLimit ? `Free plan is limited to ${FREE_PLAN_BOARD_LIMIT} boards` : undefined}
-            className="inline-flex items-center gap-1.5 self-start rounded-full bg-gradient-to-b from-zinc-800 to-zinc-950 px-4 py-2.5 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.2),0_8px_20px_-8px_rgba(0,0,0,0.35)] transition-all duration-150 hover:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_10px_24px_-6px_rgba(0,0,0,0.4)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:brightness-100"
+            className="inline-flex items-center gap-1.5 self-start rounded-full bg-gradient-to-b from-zinc-800 to-zinc-950 px-4 py-2.5 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.2),0_8px_20px_-8px_rgba(0,0,0,0.35)] transition-all duration-150 hover:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_10px_24px_-6px_rgba(0,0,0,0.4)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:brightness-100 dark:from-white dark:to-zinc-200 dark:text-zinc-900 blueprint:border blueprint:border-white/40 blueprint:from-transparent blueprint:to-transparent blueprint:text-white blueprint:shadow-none blueprint:hover:bg-white/10 blueprint:hover:brightness-100"
           >
             <PlusIcon />
             {isCreating ? "Creating…" : "Create board"}
@@ -318,12 +322,12 @@ export default function Dashboard() {
         </div>
 
         {limitMessage && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
             {limitMessage}
           </div>
         )}
         {atLimit && !limitMessage && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
             You&apos;ve reached the free plan limit of {FREE_PLAN_BOARD_LIMIT} boards. Delete one,
             or upgrade to Pro, to create another.
           </div>
@@ -340,12 +344,14 @@ export default function Dashboard() {
         )}
 
         {status === "error" && (
-          <div className="flex flex-col items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-600">Couldn&apos;t reach the database.</p>
+          <div className="flex flex-col items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 blueprint:border-white/20 blueprint:bg-white/5">
+            <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
+              Couldn&apos;t reach the database.
+            </p>
             <button
               type="button"
               onClick={retryLoad}
-              className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+              className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
             >
               Try again
             </button>
@@ -353,12 +359,14 @@ export default function Dashboard() {
         )}
 
         {status === "ready" && boards.length === 0 && (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-white/60 px-6 py-16 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-white/60 px-6 py-16 text-center dark:border-white/15 dark:bg-white/5 blueprint:border-white/30 blueprint:bg-white/5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-white/10 dark:text-white/50 blueprint:bg-white/10 blueprint:text-white/70">
               <PlusIcon />
             </div>
-            <p className="text-sm font-medium text-zinc-700">No boards yet</p>
-            <p className="max-w-xs text-sm text-zinc-500">
+            <p className="text-sm font-medium text-zinc-700 dark:text-white/80 blueprint:text-white">
+              No boards yet
+            </p>
+            <p className="max-w-xs text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
               Create your first board to start mapping out notes and ideas on an infinite canvas.
             </p>
           </div>
@@ -370,7 +378,7 @@ export default function Dashboard() {
               <li
                 key={board.id}
                 data-board-id={board.id}
-                className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.18)]"
+                className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.18)] dark:border-white/10 dark:bg-zinc-900 dark:shadow-none dark:hover:border-white/20 dark:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.6)] blueprint:border-white/20 blueprint:bg-white/[0.06] blueprint:shadow-none blueprint:hover:border-white/40 blueprint:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.4)]"
               >
                 <button
                   type="button"
@@ -403,7 +411,7 @@ export default function Dashboard() {
                             setEditingBoardId(null);
                           }
                         }}
-                        className="w-full rounded-md border border-zinc-300 px-1.5 py-0.5 text-[15px] font-medium text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10"
+                        className="w-full rounded-md border border-zinc-300 bg-white px-1.5 py-0.5 text-[15px] font-medium text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10 dark:border-white/20 dark:bg-zinc-800 dark:text-white dark:focus:border-white/50 dark:focus:ring-white/10 blueprint:border-white/30 blueprint:bg-[#0f3057] blueprint:text-white blueprint:focus:border-white blueprint:focus:ring-white/20"
                       />
                     ) : (
                       // Both the single clicks that make up a double-click,
@@ -419,12 +427,12 @@ export default function Dashboard() {
                           handleStartRename(board);
                         }}
                         title="Double-click to rename"
-                        className="truncate text-[15px] font-medium tracking-tight text-zinc-900"
+                        className="truncate text-[15px] font-medium tracking-tight text-zinc-900 dark:text-white blueprint:text-white"
                       >
                         {board.name}
                       </span>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-zinc-400">
+                    <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-white/40 blueprint:text-white/60">
                       <span className="flex items-center gap-1">
                         <ClockIcon />
                         {formatRelativeTime(board.updatedAt)}
@@ -441,7 +449,7 @@ export default function Dashboard() {
                   type="button"
                   onClick={() => handleDeleteBoard(board)}
                   title="Delete board"
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 opacity-0 shadow-sm backdrop-blur transition-all duration-150 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 opacity-0 shadow-sm backdrop-blur transition-all duration-150 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:bg-black/50 dark:text-white/50 dark:hover:bg-red-500/20 dark:hover:text-red-400 blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-red-500/20 blueprint:hover:text-red-300"
                 >
                   <TrashIcon />
                 </button>

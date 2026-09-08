@@ -37,9 +37,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
+    <div className="blueprint-grid flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950 blueprint:bg-background">
       <div className="w-full max-w-sm">
-        <h1 className="mb-6 text-center text-lg font-semibold text-zinc-900">
+        <h1 className="mb-6 text-center text-lg font-semibold text-zinc-900 dark:text-white blueprint:font-mono blueprint:text-white">
           Log in to NoteMap
         </h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -50,7 +50,7 @@ export default function LoginPage() {
             placeholder="Email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:border-white/40 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white blueprint:placeholder:text-white/50 blueprint:focus:border-white"
           />
           <input
             type="password"
@@ -59,20 +59,20 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:border-white/40 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white blueprint:placeholder:text-white/50 blueprint:focus:border-white"
           />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400 blueprint:text-red-200">{error}</p>}
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-1 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-1 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
           >
             {isSubmitting ? "Logging in…" : "Log in"}
           </button>
         </form>
-        <p className="mt-4 text-center text-sm text-zinc-500">
+        <p className="mt-4 text-center text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-medium text-zinc-900 underline">
+          <Link href="/signup" className="font-medium text-zinc-900 underline dark:text-white blueprint:text-white">
             Sign up
           </Link>
         </p>

@@ -41,7 +41,7 @@ export default function RichTextEditor({
         // NoteNode wrapper's `nodrag`-free margin around this component —
         // see the comment there for why the split matters.
         class:
-          "prose-note h-full p-2 text-sm text-zinc-800 outline-none focus:outline-none",
+          "prose-note h-full p-2 text-sm text-zinc-800 outline-none focus:outline-none dark:text-white/85 blueprint:text-white",
       },
     },
     onUpdate: ({ editor: updatedEditor }) => {

@@ -78,7 +78,7 @@ const ALIGNMENTS: Array<{ label: string; value: Alignment; title: string }> = [
 ];
 
 function Divider() {
-  return <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200" />;
+  return <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-white/15 blueprint:bg-white/25" />;
 }
 
 function Button({
@@ -106,8 +106,8 @@ function Button({
       onClick={onClick}
       className={`min-w-[1.75rem] shrink-0 rounded px-1.5 py-1 text-xs font-medium leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
         active
-          ? "bg-zinc-200 text-zinc-900"
-          : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+          ? "bg-zinc-200 text-zinc-900 dark:bg-white/20 dark:text-white blueprint:bg-white/25 blueprint:text-white"
+          : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
       }`}
     >
       {children}
@@ -227,7 +227,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             editor?.chain().focus().unsetFontFamily().run();
           }
         }}
-        className="nodrag shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
+        className="nodrag shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 dark:text-white/60 dark:hover:bg-white/10 blueprint:text-white/70 blueprint:hover:bg-white/10"
       >
         {FONT_FAMILIES.map((font) => (
           <option key={font.label} value={font.value} style={{ fontFamily: font.value || undefined }}>
@@ -262,9 +262,9 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, parsed));
             editor?.chain().focus().setFontSize(`${clamped}px`).run();
           }}
-          className="nodrag w-9 shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-center text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="nodrag w-9 shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-center text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none dark:text-white/60 dark:hover:bg-white/10 blueprint:text-white/70 blueprint:hover:bg-white/10"
         />
-        <span className="text-[10px] text-zinc-400">px</span>
+        <span className="text-[10px] text-zinc-400 dark:text-white/30 blueprint:text-white/40">px</span>
       </div>
 
       <Divider />
@@ -317,8 +317,8 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             }
             className={`h-4 w-4 shrink-0 rounded-full border transition-transform disabled:cursor-not-allowed disabled:opacity-30 ${
               state.color === color.value
-                ? "scale-110 border-zinc-500"
-                : "border-zinc-200 hover:scale-110"
+                ? "scale-110 border-zinc-500 dark:border-white blueprint:border-white"
+                : "border-zinc-200 hover:scale-110 dark:border-white/30 blueprint:border-white/40"
             }`}
             style={{ backgroundColor: color.value ?? "#ffffff" }}
           />
@@ -338,7 +338,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             onClick={() =>
               editor?.chain().focus().toggleHighlight({ color: color.value }).run()
             }
-            className="h-4 w-4 shrink-0 rounded-full border border-zinc-200 transition-transform disabled:cursor-not-allowed disabled:opacity-30 hover:scale-110"
+            className="h-4 w-4 shrink-0 rounded-full border border-zinc-200 transition-transform disabled:cursor-not-allowed disabled:opacity-30 hover:scale-110 dark:border-white/30 blueprint:border-white/40"
             style={{ backgroundColor: color.value }}
           />
         ))}
