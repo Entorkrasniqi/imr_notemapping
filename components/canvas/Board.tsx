@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   addEdge,
   Background,
@@ -8,6 +10,7 @@ import {
   ConnectionMode,
   Controls,
   MarkerType,
+  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -15,6 +18,7 @@ import {
   useReactFlow,
   type Connection,
   type DefaultEdgeOptions,
+  type NodeChange,
   type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -22,6 +26,9 @@ import NoteNode from "./NoteNode";
 import DeletableEdge from "./DeletableEdge";
 import FormattingDock from "./FormattingDock";
 import { ActiveEditorProvider, useActiveEditor } from "@/lib/editor/active-editor-context";
+import { RecordBeforeChangeProvider, useBoardHistory } from "@/hooks/useBoardHistory";
+import { useSupabaseBoardSync } from "@/hooks/useSupabaseBoardSync";
+import { createClient } from "@/lib/supabase/client";
 import type { BoardEdge, NoteNode as NoteNodeType } from "@/types/canvas";
 
 const nodeTypes = { note: NoteNode };
@@ -36,14 +43,21 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
 
 const DEFAULT_NOTE_WIDTH = 240;
 const DEFAULT_NOTE_HEIGHT = 160;
-
-let noteSequence = 0;
+// A closed note shows only its title (see NoteNode/NotePreview) — this is
+// just tall enough for one line of the larger title text plus the small
+// "more content" hint, so a closed note doesn't carry empty dead space
+// sized for a body nobody can currently see.
+const COLLAPSED_NOTE_HEIGHT = 56;
 
 /** Builds a new note node centered on a given flow-space position. */
 function createNote(center: { x: number; y: number }): NoteNodeType {
-  noteSequence += 1;
   return {
-    id: `note-${Date.now()}-${noteSequence}`,
+    // A real UUID, not an ad-hoc string, because it has to be one:
+    // `nodes.id` in Postgres is a `uuid` column (see docs/database.md,
+    // which specifically calls out generating them client-side as safe
+    // and intentional — this is exactly that). `crypto.randomUUID()` is a
+    // standard browser API, no library needed.
+    id: crypto.randomUUID(),
     type: "note",
     position: {
       x: center.x - DEFAULT_NOTE_WIDTH / 2,
@@ -65,18 +79,102 @@ function createNote(center: { x: number; y: number }): NoteNodeType {
  * convert mouse/screen coordinates into canvas ("flow") coordinates when
  * placing a new note.
  */
-function FlowCanvas() {
+function FlowCanvas({ boardId }: { boardId: string }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const { editingNoteId, setEditingNoteId } = useActiveEditor();
 
-  // State is intentionally just React state in memory: no persistence yet
-  // (that's Phase 4), no backend (Phase 5). `useNodesState`/`useEdgesState`
-  // are small React Flow helpers around useState that also give us
-  // `onNodesChange`/`onEdgesChange`, which apply drag/select/resize/remove
-  // updates for us.
+  // React state remains what the canvas actually renders from — Supabase
+  // is a sync target underneath it, not a replacement for it (see
+  // docs/architecture.md's data-flow section). `useNodesState`/
+  // `useEdgesState` are small React Flow helpers around useState that
+  // also give us `onNodesChange`/`onEdgesChange`, which apply
+  // drag/select/resize/remove updates for us.
   const [nodes, setNodes, onNodesChange] = useNodesState<NoteNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([]);
+
+  // Phase 5: the board now lives in Postgres instead of localStorage
+  // (Phase 4). This loads it once on mount — establishing a session,
+  // finding or creating this user's one board, and fetching its
+  // nodes/edges — then writes back (debounced) on every change after
+  // that. See hooks/useSupabaseBoardSync.ts for the mechanics and
+  // lib/supabase/board-sync.ts for the actual CRUD.
+  const { status: boardStatus, retry: retryBoardLoad } = useSupabaseBoardSync({
+    boardId,
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+  });
+
+  // Undo/redo for board-level actions (create/delete/move/resize/connect)
+  // — see hooks/useBoardHistory.tsx for why text edits inside a note are
+  // deliberately excluded from this. `getCurrentSnapshot` is read at the
+  // moment of each undo/redo, so it has to be a function, not a value —
+  // otherwise it would always hand back whatever `nodes`/`edges` were
+  // when this render happened to run.
+  const getCurrentSnapshot = useCallback(
+    () => ({ nodes, edges }),
+    [nodes, edges],
+  );
+  const restoreSnapshot = useCallback(
+    (snapshot: { nodes: NoteNodeType[]; edges: BoardEdge[] }) => {
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+    },
+    [setNodes, setEdges],
+  );
+  const { recordBeforeChange, undo, redo } = useBoardHistory({
+    getCurrent: getCurrentSnapshot,
+    restore: restoreSnapshot,
+  });
+
+  // Ctrl/Cmd+Z (and Shift+Z for redo) — but only when no note is being
+  // edited. Tiptap already owns Ctrl+Z for undoing text while a note is
+  // open (see RichTextEditor's extensions); if this handler also reacted
+  // then, the two undo stacks would fight over the same keystroke.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (editingNoteId) return;
+      const isModPressed = event.metaKey || event.ctrlKey;
+      if (!isModPressed || event.key.toLowerCase() !== "z") return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editingNoteId, undo, redo]);
+
+  // Wrap the built-in change handlers to record history right before a
+  // note or edge is *removed* — the one node/edge change type that's
+  // always a single, complete action rather than a step in a longer
+  // gesture (a drag or resize fires many intermediate changes; those are
+  // instead captured once, up front, via onNodeDragStart/onResizeStart).
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<NoteNodeType>[]) => {
+      if (changes.some((change) => change.type === "remove")) {
+        recordBeforeChange();
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange, recordBeforeChange],
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: Parameters<typeof onEdgesChange>[0]) => {
+      if (changes.some((change) => change.type === "remove")) {
+        recordBeforeChange();
+      }
+      onEdgesChange(changes);
+    },
+    [onEdgesChange, recordBeforeChange],
+  );
 
   // Text-edit mode should end the moment its note is no longer the
   // selected one — clicking a different note, or clicking empty canvas,
@@ -92,6 +190,41 @@ function FlowCanvas() {
     }
   }, [nodes, editingNoteId, setEditingNoteId]);
 
+  // Shrinks a note to fit just its title the moment it stops being edited,
+  // and restores whatever height it had before the next time it's opened
+  // again. Tracking the *previous* editingNoteId in a ref (rather than
+  // reading it from state) is what lets this tell "a note just opened"
+  // apart from "a note just closed" in one effect, since by the time it
+  // runs, `editingNoteId` itself already only reflects the new state.
+  const previousEditingNoteId = useRef<string | null>(null);
+  useEffect(() => {
+    const previousId = previousEditingNoteId.current;
+    previousEditingNoteId.current = editingNoteId;
+    if (previousId === editingNoteId) return;
+
+    setNodes((current) =>
+      current.map((node) => {
+        if (node.id === previousId) {
+          return {
+            ...node,
+            height: COLLAPSED_NOTE_HEIGHT,
+            data: {
+              ...node.data,
+              expandedHeight: node.height ?? DEFAULT_NOTE_HEIGHT,
+            },
+          };
+        }
+        if (node.id === editingNoteId) {
+          return {
+            ...node,
+            height: node.data.expandedHeight ?? DEFAULT_NOTE_HEIGHT,
+          };
+        }
+        return node;
+      }),
+    );
+  }, [editingNoteId, setNodes]);
+
   const handleNodeDoubleClick = useCallback<NodeMouseHandler>(
     (_event, node) => {
       setEditingNoteId(node.id);
@@ -105,15 +238,22 @@ function FlowCanvas() {
   // that bookkeeping.
   const handleConnect = useCallback(
     (connection: Connection) => {
-      setEdges((current) => addEdge(connection, current));
+      recordBeforeChange();
+      // `addEdge`'s own default id (`xy-edge__<source>-<target>`) isn't a
+      // valid UUID either, for the same reason `createNote` above needs
+      // one — `edges.id` is a `uuid` column too.
+      setEdges((current) =>
+        addEdge(connection, current, { getEdgeId: () => crypto.randomUUID() }),
+      );
     },
-    [setEdges],
+    [setEdges, recordBeforeChange],
   );
 
   const addNoteAtScreenPoint = useCallback(
     (clientX: number, clientY: number) => {
       const flowPosition = screenToFlowPosition({ x: clientX, y: clientY });
       const note = createNote(flowPosition);
+      recordBeforeChange();
       // Deselect existing notes so the new one is the only selected one,
       // and open it for typing immediately — creating a note is itself a
       // deliberate enough action that it should be ready to type into
@@ -124,7 +264,7 @@ function FlowCanvas() {
       ]);
       setEditingNoteId(note.id);
     },
-    [screenToFlowPosition, setNodes, setEditingNoteId],
+    [screenToFlowPosition, setNodes, setEditingNoteId, recordBeforeChange],
   );
 
   const handleAddNoteButtonClick = useCallback(() => {
@@ -152,69 +292,178 @@ function FlowCanvas() {
     [addNoteAtScreenPoint],
   );
 
+  const handleFitViewClick = useCallback(() => {
+    fitView({ duration: 200, padding: 0.2 });
+  }, [fitView]);
+
+  const handleLogoutClick = useCallback(async () => {
+    await supabase.auth.signOut();
+    // `proxy.ts` would redirect here on the very next request regardless
+    // (no session, not a public path), but pushing straight to `/login`
+    // avoids a visible round trip through the now-stale board first.
+    router.push("/login");
+    router.refresh();
+  }, [supabase, router]);
+
+  // A safety net for dropping a JPEG onto a note (see NoteNode's own drop
+  // handler, which does the actual work): without preventing the default
+  // here too, a drop that misses every note and lands on bare canvas
+  // would fall through to the browser's own handling, which for a
+  // dragged-in file usually means navigating the tab to open it —
+  // replacing the whole app. NoteNode's handler calls
+  // `stopPropagation()` on a drop it *does* handle, so this only ever
+  // fires for drops that no note caught.
+  const handleWrapperDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+  }, []);
+  const handleWrapperDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+  }, []);
+
   return (
-    <div
-      ref={wrapperRef}
-      className="relative h-screen w-screen bg-zinc-50"
-      onDoubleClick={handleWrapperDoubleClick}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={handleConnect}
-        onNodeDoubleClick={handleNodeDoubleClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
-        // Every handle in NoteNode is `type="source"`; loose mode is what
-        // allows a source-to-source connection to form an edge at all.
-        connectionMode={ConnectionMode.Loose}
-        // React Flow zooms in on double-click by default; we've repurposed
-        // double-click to create a note instead, so that default must go.
-        zoomOnDoubleClick={false}
-        deleteKeyCode={["Backspace", "Delete"]}
-        minZoom={0.1}
-        maxZoom={2}
-        fitView={false}
+    <RecordBeforeChangeProvider value={recordBeforeChange}>
+      <div
+        ref={wrapperRef}
+        className="relative h-screen w-screen bg-zinc-50"
+        onDoubleClick={handleWrapperDoubleClick}
+        onDragOver={handleWrapperDragOver}
+        onDrop={handleWrapperDrop}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d4d4d8" />
-        <Controls showInteractive={false} />
-      </ReactFlow>
-
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-4">
-        <div className="pointer-events-auto rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur">
-          NoteMap
-        </div>
-        <button
-          type="button"
-          onClick={handleAddNoteButtonClick}
-          className="pointer-events-auto rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onNodeDragStart={recordBeforeChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          // Every handle in NoteNode is `type="source"`; loose mode is what
+          // allows a source-to-source connection to form an edge at all.
+          connectionMode={ConnectionMode.Loose}
+          // React Flow zooms in on double-click by default; we've repurposed
+          // double-click to create a note instead, so that default must go.
+          zoomOnDoubleClick={false}
+          deleteKeyCode={["Backspace", "Delete"]}
+          minZoom={0.1}
+          maxZoom={2}
+          fitView={false}
         >
-          + Add note
-        </button>
-      </div>
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d4d4d8" />
+          <Controls showInteractive={false} />
+          {/* Default position (bottom-right) pairs with Controls' default
+              (bottom-left) below — the conventional, non-colliding layout
+              most React Flow boards use. FormattingDock is centered at
+              the bottom and stays clear of both corners in practice. */}
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor="#d4d4d8"
+            maskColor="rgba(244, 244, 245, 0.6)"
+          />
+        </ReactFlow>
 
-      {nodes.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="text-sm text-zinc-400">
-            Double-click anywhere, or press “+ Add note”, to create your first note.
-          </p>
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-4">
+          <Link
+            href="/"
+            className="pointer-events-auto rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+            title="Back to your boards"
+          >
+            ← NoteMap
+          </Link>
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFitViewClick}
+              title="Fit all notes in view"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+            >
+              Fit view
+            </button>
+            <button
+              type="button"
+              onClick={handleAddNoteButtonClick}
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+            >
+              + Add note
+            </button>
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              title="Log out"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100"
+            >
+              Log out
+            </button>
+          </div>
         </div>
-      )}
 
-      <FormattingDock />
-    </div>
+        {boardStatus === "loading" && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="text-sm text-zinc-400">Loading your board…</p>
+          </div>
+        )}
+
+        {boardStatus === "error" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80">
+            <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-zinc-600">Couldn&apos;t reach the database.</p>
+              <button
+                type="button"
+                onClick={retryBoardLoad}
+                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Reachable if this board was deleted (in another tab, or by
+            this same user earlier) while something still links to its
+            URL — see BoardNotFoundError in lib/supabase/board-sync.ts. */}
+        {boardStatus === "not-found" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80">
+            <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-zinc-600">
+                This board doesn&apos;t exist, or isn&apos;t yours.
+              </p>
+              <Link
+                href="/"
+                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700"
+              >
+                Back to your boards
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Gated on `boardStatus === "ready"` so this can't flash on
+            screen while the real (possibly non-empty) board is still
+            loading — it should only ever mean "this board is genuinely
+            empty," not "we don't know yet." */}
+        {boardStatus === "ready" && nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="text-sm text-zinc-400">
+              Double-click anywhere, or press “+ Add note”, to create your first note.
+            </p>
+          </div>
+        )}
+
+        <FormattingDock />
+      </div>
+    </RecordBeforeChangeProvider>
   );
 }
 
 /** Public entry point: wraps the canvas in the providers it needs. */
-export default function Board() {
+export default function Board({ boardId }: { boardId: string }) {
   return (
     <ReactFlowProvider>
       <ActiveEditorProvider>
-        <FlowCanvas />
+        <FlowCanvas boardId={boardId} />
       </ActiveEditorProvider>
     </ReactFlowProvider>
   );

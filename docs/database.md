@@ -1,6 +1,11 @@
 # NoteMap — Database Architecture
 
-Status: Phase 0 (planning). This schema is implemented in Phase 5.
+Status: implemented in Phase 5 (see §4a for what changed along the way).
+Phase 6 added real sign-up/login on top of this exact schema — RLS never
+needed to change, since it was never conditioned on "anonymous vs. real,"
+only on `auth.uid()` resolving to *some* row in `auth.users`. Phase 7
+dropped the Phase 5 one-board-per-user constraint and implemented the
+free-plan limit trigger that §6 had described but deferred.
 
 ## 1. Why Postgres (via Supabase)
 
@@ -106,6 +111,38 @@ another place a bug could leave orphaned rows.
    updated" display (Phase 7) and must stay correct even if a future code
    path forgets to touch it.
 
+## 4a. Changes made *during* Phase 5 implementation
+
+The four sections above were written in Phase 0, before any of this had
+actually been built against a real database. Three things came up only
+once real client code was hitting it:
+
+1. **`nodes.expanded_height`** (nullable `double precision`) — added after
+   the closed/open note collapse behavior existed in the app but not in
+   this document. A closed note shrinks to a fixed height and remembers
+   its real, user-set height for reopening; `height` alone can't hold both
+   meanings, since whichever one was true at the moment of the last save
+   would be the only one left.
+2. **`boards.user_id default auth.uid()`** — the client no longer sends
+   `user_id` on insert at all. It's set by Postgres itself, from the JWT
+   of the exact request doing the inserting. This isn't a security fix —
+   RLS's `with check` already rejected a mismatched client-supplied value
+   — it's a robustness one: a client-supplied value can be captured
+   slightly before it's used, and in that gap a concurrent session change
+   (a second tab, or React StrictMode's intentional double-mount in
+   development) can make it stale.
+3. **`boards_user_id_unique`** — a `unique (user_id)` constraint. Finding
+   or creating a user's board is a select, then (if empty) an insert —
+   not one atomic operation, so two concurrent calls can both see "no
+   board" and both insert one. This constraint turns the loser into a
+   clean `23505` error the application code catches and recovers from by
+   re-fetching the winner, rather than a second, orphaned board silently
+   existing. It was a **Phase 5-specific simplification** for "one
+   implicit board per user, no dashboard yet" — **dropped in Phase 7**
+   (`boards_drop_one_per_user` migration) once the dashboard added real
+   multi-board support, with the free-plan limit trigger (§6) taking over
+   as the actual cap.
+
 ## 5. Row Level Security
 
 RLS is **enabled** on `boards`, `nodes`, and `edges`. Policies (SQL,
@@ -160,19 +197,28 @@ match, and no `with check` would let you insert rows you don't own.
 
 ## 6. Free-plan limit (3 boards)
 
-Per the brief, this must not be a frontend-only check. Two layers:
+Implemented in Phase 7 (`boards_free_plan_limit` migration). Per the
+brief, this must not be a frontend-only check — two layers:
 
-1. **Application-level check** before showing the "create board" action as
-   available (fast, good UX — the error is prevented, not just caught).
-2. **Database-level enforcement** via a `before insert` trigger on `boards`
-   that counts the user's existing boards (or checks `profiles.plan`) and
-   raises an exception if a free user already has 3. This is what actually
-   prevents bypass — RLS policies can't easily express "count of existing
-   rows," so a trigger function is the right tool here, not another RLS
-   policy.
-
-This will be written out fully in Phase 7, once boards/dashboard exist to
-test it against.
+1. **Application-level check** (`lib/supabase/boards.ts`'s
+   `FREE_PLAN_BOARD_LIMIT`, used by the dashboard) disables the "+ Create
+   board" action once the user already has 3 boards, and shows a message
+   explaining why — fast, good UX, the error is prevented rather than
+   just caught.
+2. **Database-level enforcement** via `enforce_free_plan_board_limit()`, a
+   `before insert` trigger function on `boards`. It looks up the
+   inserting user's `profiles.plan`; a non-`'free'` plan (or a missing
+   profile row, defensively) is let through unconditionally, otherwise it
+   counts that user's existing boards and raises a `P0001` exception if
+   there are already 3 or more. This is the layer that actually can't be
+   bypassed — RLS's `using`/`with check` can only evaluate the row being
+   read or written, with no way to express "count of existing rows,"
+   which is exactly why this needed a trigger rather than another RLS
+   policy. Verified directly against the live database: a user's 3rd
+   board insert succeeds, a 4th is rejected with
+   `{"code":"P0001","message":"Free plan is limited to 3 boards"}`, and
+   the Supabase JS client surfaces that as a normal `PostgrestError` the
+   application code catches (`BoardLimitError` in `boards.ts`).
 
 ## 7. Primary keys, foreign keys, CRUD — quick reference
 

@@ -73,19 +73,33 @@ this exists after Phase 0):
 
 ```
 /app                    Next.js App Router routes
-  /login
-  /signup
-  /dashboard
-  /board/[boardId]
+  /login                ✓ Phase 6
+  /signup               ✓ Phase 6
+  /                     ✓ Phase 7 — the dashboard (board list) now lives
+                         at the root route; the canvas moved out to
+                         /board/[boardId] below
+  /board/[boardId]      ✓ Phase 7 — the canvas, one route per board
 /components
   /canvas                React Flow wrapper, custom node/edge components
   /editor                Tiptap editor + toolbar
-  /dashboard             Board list, board card, create/rename/delete UI
+  /dashboard             ✓ Phase 7 — Dashboard.tsx: board list, create/
+                         rename (double-click a name)/delete/open, free-
+                         plan limit messaging
 /lib
-  /supabase              Supabase client factory (browser + server variants)
-/hooks                   Reusable hooks (e.g. useBoard, useAutosave)
+  /supabase              ✓ Supabase client factory — browser (Phase 5) +
+                         server (Phase 6) variants, both now in use; plus
+                         board-sync.ts (single-board load/save) and
+                         boards.ts (Phase 7 — dashboard CRUD + listing)
+/hooks                   Reusable hooks (useBoardHistory, useSupabaseBoardSync, …)
 /types                   Shared TypeScript types (Node content, Board, Edge)
 /docs                    This document and friends
+proxy.ts                 ✓ Phase 6 — route protection + session refresh,
+                         at the project root (not under /app — this is
+                         Next.js 16's renamed `middleware.ts`, see its own
+                         top-of-file comment). No changes needed for
+                         Phase 7: `/board/[boardId]` is protected by the
+                         same "anything not in PUBLIC_PATHS" rule as
+                         every other route.
 ```
 
 Guiding rules for this layer:
@@ -108,11 +122,27 @@ Guiding rules for this layer:
   replacement for it. This is why Phase 4 (local persistence) matters: it
   forces us to nail serialization before a network is involved.
 
-## 5. Data flow (once persistence exists)
+## 5. Data flow
 
-1. User loads `/board/[boardId]`.
-2. Page fetches the board's nodes/edges from Supabase (RLS ensures only
-   rows where the board belongs to the signed-in user come back).
+As of Phase 7, `/` is the dashboard: it lists the signed-in user's boards
+(name, last updated, note count — via `lib/supabase/boards.ts`'s
+`listBoards`, which uses PostgREST's embedded `nodes(count)` to avoid an
+N+1 query per card) and lets them create/rename/delete/open one. Opening
+a board navigates to `/board/[boardId]`, which is where the flow below
+actually happens. (Phase 5 first proved the load/save half of this flow
+against an anonymous session, before any login screen or dashboard
+existed — see `docs/database.md` §4a. RLS never had to change across any
+of these phases: it only ever asked whether `auth.uid()` resolved to
+*some* real row in `auth.users`, anonymous or not, and separately whether
+that row owned the board being asked about.)
+
+1. User loads `/board/[boardId]`, having navigated there from the
+   dashboard (or via a bookmarked/typed URL).
+2. Page confirms the board id resolves to a row the signed-in user
+   actually owns (`verifyBoardAccess` in `board-sync.ts`) — RLS makes "no
+   such board" and "someone else's board" look identical, a deliberate
+   choice covered in that function's own comment — then fetches the
+   board's nodes/edges (again RLS-scoped).
 3. Data is converted into React Flow's `Node[]`/`Edge[]` shape and used to
    initialize the canvas.
 4. User interacts (moves a note, edits text, draws a connection). React

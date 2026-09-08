@@ -12,6 +12,14 @@ import type { JSONContent } from "@tiptap/react";
  */
 export type NoteNodeData = {
   content: JSONContent | null;
+  /**
+   * The note's height the last time it was open for editing. A closed
+   * note's box shrinks to fit just its title (see `Board.tsx`'s
+   * shrink/expand effect) — this is what lets it grow back to whatever
+   * size the user actually set, rather than a fixed default, next time
+   * it's opened.
+   */
+  expandedHeight?: number;
 };
 
 export type NoteNode = Node<NoteNodeData, "note">;

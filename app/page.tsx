@@ -1,8 +1,8 @@
-import Board from "@/components/canvas/Board";
+import Dashboard from "@/components/dashboard/Dashboard";
 
-// Phase 1: the canvas lives directly at the root route. Once a dashboard
-// and per-board routing exist (Phase 7), this becomes `/board/[boardId]`
-// and the root route becomes the dashboard/landing page instead.
+// Phase 7: the canvas used to live directly at `/` (one implicit board
+// per user, no dashboard). Now `/` is the board list, and each board gets
+// its own route at `/board/[boardId]` (see that route's page.tsx).
 export default function Home() {
-  return <Board />;
+  return <Dashboard />;
 }

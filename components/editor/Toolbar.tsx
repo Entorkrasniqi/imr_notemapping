@@ -14,6 +14,7 @@ type ToolbarState = {
   bulletList: boolean;
   orderedList: boolean;
   align: Alignment;
+  fontFamily: string;
   fontSize: string;
   color: string | null;
   canUndo: boolean;
@@ -32,11 +33,27 @@ const IDLE_STATE: ToolbarState = {
   bulletList: false,
   orderedList: false,
   align: "left",
+  fontFamily: "",
   fontSize: "",
   color: null,
   canUndo: false,
   canRedo: false,
 };
+
+const MIN_FONT_SIZE = 1;
+const MAX_FONT_SIZE = 50;
+
+// Plain web-safe font stacks — no font files to load, no extra library,
+// just picking from typefaces every OS already ships. Each entry's value
+// is the actual CSS `font-family` string Tiptap's FontFamily extension
+// writes onto the text; `Default` clears it back to the note's own font.
+const FONT_FAMILIES: Array<{ label: string; value: string }> = [
+  { label: "Default", value: "" },
+  { label: "Sans-serif", value: "Arial, Helvetica, sans-serif" },
+  { label: "Serif", value: "Georgia, 'Times New Roman', Times, serif" },
+  { label: "Monospace", value: "'Courier New', Courier, monospace" },
+  { label: "Comic", value: "'Comic Sans MS', 'Comic Sans', cursive" },
+];
 
 const TEXT_COLORS: Array<{ label: string; value: string | null }> = [
   { label: "Default", value: null },
@@ -51,14 +68,6 @@ const HIGHLIGHT_COLORS: Array<{ label: string; value: string }> = [
   { label: "Green", value: "#bbf7d0" },
   { label: "Blue", value: "#bfdbfe" },
   { label: "Pink", value: "#fbcfe8" },
-];
-
-const FONT_SIZES: Array<{ label: string; value: string }> = [
-  { label: "Default", value: "" },
-  { label: "Small", value: "13px" },
-  { label: "Normal", value: "16px" },
-  { label: "Large", value: "20px" },
-  { label: "X-Large", value: "28px" },
 ];
 
 const ALIGNMENTS: Array<{ label: string; value: Alignment; title: string }> = [
@@ -138,6 +147,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
           align:
             ALIGNMENTS.find((a) => editor.isActive({ textAlign: a.value }))
               ?.value ?? "left",
+          fontFamily: (editor.getAttributes("textStyle").fontFamily as string) ?? "",
           fontSize: (editor.getAttributes("textStyle").fontSize as string) ?? "",
           color: (editor.getAttributes("textStyle").color as string) ?? null,
           canUndo: editor.can().undo(),
@@ -205,26 +215,57 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
       <Divider />
 
       <select
-        title="Text size"
+        title="Font"
         disabled={disabled}
-        value={state.fontSize}
+        value={state.fontFamily}
         onMouseDown={(event) => event.stopPropagation()}
         onChange={(event) => {
           const value = event.target.value;
           if (value) {
-            editor?.chain().focus().setFontSize(value).run();
+            editor?.chain().focus().setFontFamily(value).run();
           } else {
-            editor?.chain().focus().unsetFontSize().run();
+            editor?.chain().focus().unsetFontFamily().run();
           }
         }}
         className="nodrag shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
       >
-        {FONT_SIZES.map((size) => (
-          <option key={size.label} value={size.value}>
-            {size.label}
+        {FONT_FAMILIES.map((font) => (
+          <option key={font.label} value={font.value} style={{ fontFamily: font.value || undefined }}>
+            {font.label}
           </option>
         ))}
       </select>
+
+      <Divider />
+
+      <div
+        className="flex shrink-0 items-center gap-1"
+        title={`Text size (${MIN_FONT_SIZE}–${MAX_FONT_SIZE}px)`}
+      >
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_FONT_SIZE}
+          max={MAX_FONT_SIZE}
+          disabled={disabled}
+          value={state.fontSize ? String(parseInt(state.fontSize, 10)) : ""}
+          placeholder="16"
+          onMouseDown={(event) => event.stopPropagation()}
+          onChange={(event) => {
+            const raw = event.target.value;
+            if (raw === "") {
+              editor?.chain().focus().unsetFontSize().run();
+              return;
+            }
+            const parsed = Number(raw);
+            if (Number.isNaN(parsed)) return;
+            const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, parsed));
+            editor?.chain().focus().setFontSize(`${clamped}px`).run();
+          }}
+          className="nodrag w-9 shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-center text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span className="text-[10px] text-zinc-400">px</span>
+      </div>
 
       <Divider />
 

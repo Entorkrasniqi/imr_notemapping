@@ -1,8 +1,9 @@
 import StarterKit from "@tiptap/starter-kit";
-import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
 import Highlight from "@tiptap/extension-highlight";
 import Placeholder from "@tiptap/extension-placeholder";
+import Image from "@tiptap/extension-image";
 import type { AnyExtension } from "@tiptap/core";
 
 /**
@@ -24,6 +25,7 @@ export function getNoteExtensions(): AnyExtension[] {
     TextStyle,
     Color,
     FontSize,
+    FontFamily,
     TextAlign.configure({
       types: ["heading", "paragraph"],
     }),
@@ -31,5 +33,12 @@ export function getNoteExtensions(): AnyExtension[] {
     Placeholder.configure({
       placeholder: "Type something…",
     }),
+    // `allowBase64` matters: a dropped image is stored as a data URL right
+    // in the note's own JSON (there's no file upload/storage backend yet —
+    // that's Phase 5), and Tiptap strips base64 `src` values by default as
+    // an XSS precaution. We're generating that data URL ourselves from a
+    // local file the user just dropped, not accepting arbitrary remote
+    // HTML, so that risk doesn't apply here.
+    Image.configure({ allowBase64: true }),
   ];
 }

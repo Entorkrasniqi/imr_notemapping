@@ -16,25 +16,67 @@ This tracks phase status. Each phase is scoped deliberately narrow — see
 - [x] **Phase 3 — Connections.** Connection handles on notes, drag-to-connect
       arrows, edge selection and deletion, edges stay attached when notes
       move.
-- [ ] **Phase 4 — Local persistence.** Board state (nodes + edges) survives
+- [x] **Phase 4 — Local persistence.** Board state (nodes + edges) survives
       a page reload via serialization to `localStorage`.
-- [ ] **Phase 5 — Supabase.** Real Postgres schema (see `database.md`)
-      replaces local persistence for authenticated users.
-- [ ] **Phase 6 — Authentication.** Supabase Auth signup/login/logout,
-      protected routes, Row Level Security verified with two real accounts.
-- [ ] **Phase 7 — Dashboard.** Board list (name, last updated, note count),
+- [x] **Phase 5 — Supabase.** Real Postgres schema (see `database.md`)
+      replaces local persistence. "Authenticated" for now means an
+      anonymous Supabase session (see `lib/supabase/board-sync.ts`) — real
+      sign-up/login is Phase 6; RLS can't tell the difference either way.
+- [x] **Phase 6 — Authentication.** Supabase Auth signup/login/logout,
+      protected routes (`proxy.ts`), Row Level Security verified with two
+      real accounts. Replaces Phase 5's anonymous-session bridge — RLS
+      itself didn't need to change at all.
+- [x] **Phase 7 — Dashboard.** Board list (name, last updated, note count),
       create/rename/delete/open, 3-board free-plan limit enforced at both
       the UI and database level.
 - [ ] **Phase 8 — Polish.** Loading/error/empty states, keyboard shortcuts,
       autosave refinement, undo/redo, performance pass, accessibility,
-      responsive behavior.
+      general responsive layout (breakpoints, not touch input — see
+      Phase 15 for that).
+- [ ] **Phase 9 — Billing.** Stripe Checkout + customer portal for
+      upgrading/downgrading; a webhook route (the app's first genuinely
+      server-side endpoint — everything before this talks to Supabase
+      directly from the browser) syncs `profiles.plan` on subscription
+      events. Makes self-service what's currently a manual
+      `update profiles set plan = 'pro'` — the Phase 7 trigger already
+      unlimits any non-`'free'` plan, so no schema change needed, just a
+      real way for `plan` to change.
+- [ ] **Phase 10 — Sharing.** A `board_members` join table (anticipated
+      since Phase 0, see `architecture.md` §7) so a board can have
+      collaborators, not just an owner; a share dialog with viewer/editor
+      roles; RLS policies extended from "owner-only" to "owner or member."
+      Public (link-accessible, no login) boards are a stretch goal here,
+      not required for the phase.
+- [ ] **Phase 11 — Real-time collaboration.** Supabase Realtime
+      subscriptions on `nodes`/`edges` so collaborators added in Phase 10
+      see each other's changes live, plus presence (who else is on the
+      board right now). Depends on Phase 10 existing — no point
+      real-time-syncing a board only one person can access.
+- [ ] **Phase 12 — Search & organization.** Search across board names and
+      note content from the dashboard; tags on boards for filtering once
+      a user has more than a handful.
+- [ ] **Phase 13 — Export & templates.** Export a board to PNG/PDF;
+      save-as-template and create-board-from-template.
+- [ ] **Phase 14 — History & appearance.** Version history — browse and
+      restore a board's past states from the database, distinct from the
+      in-session undo/redo Phase 3 already built, which doesn't survive a
+      reload. Dark mode.
+- [ ] **Phase 15 — Mobile & touch.** Touch-first canvas interactions
+      (pinch-to-zoom, touch-drag, formatting controls sized for touch) —
+      distinct from Phase 8's general responsive layout pass, which
+      covers breakpoints and keyboard/screen-reader behavior but not
+      touch gestures on the canvas itself.
 
-## Explicitly deferred (design allows for these, none are built yet)
+## Notes on phases 9-15
 
-Stripe subscriptions, unlimited boards for Pro, board sharing,
-collaboration, public boards, board templates, export to PDF/image,
-search, tags, dark mode, version history, real-time collaboration,
-mobile/tablet support.
+These extend the roadmap past the original 8-phase brief, turning what
+was previously one flat "explicitly deferred, none built yet" list into
+an ordered plan. The ordering favors things that unlock other things
+(billing before "unlimited boards" is real; sharing before real-time,
+since syncing a single-owner board live has no audience) and defers the
+largest, most self-contained efforts (history, mobile) to the end. This
+ordering is a proposal, not a commitment — revisit it before starting
+Phase 9 if priorities have shifted.
 
 ## Git convention
 
@@ -49,6 +91,13 @@ feat: connect Supabase and persist boards        (Phase 5)
 feat: add Supabase auth and RLS-protected boards (Phase 6)
 feat: add dashboard with free-plan board limit   (Phase 7)
 chore: polish, accessibility, performance         (Phase 8)
+feat: add Stripe billing and plan webhook         (Phase 9)
+feat: add board sharing and collaborator roles    (Phase 10)
+feat: add real-time collaboration via Realtime    (Phase 11)
+feat: add search, tags, and board organization    (Phase 12)
+feat: add board export and templates              (Phase 13)
+feat: add version history and dark mode           (Phase 14)
+feat: add touch-first mobile canvas interactions  (Phase 15)
 ```
 
 Commits are suggested at the end of each phase along with what to test
