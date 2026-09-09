@@ -86,6 +86,20 @@ function NotesIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden>
+      <path
+        d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.5 12.1l-2.8.7.7-2.8Z"
+        stroke="currentColor"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden>
@@ -255,14 +269,17 @@ export default function Dashboard() {
   return (
     <div className="blueprint-grid min-h-screen bg-[radial-gradient(circle_at_top,_#fafafa,_#f4f4f5_60%)] dark:bg-[radial-gradient(circle_at_top,_#18181b,_#09090b_60%)] blueprint:bg-background">
       <header className="sticky top-0 z-10 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40 blueprint:border-white/15 blueprint:bg-[#0f3057]/70">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4 sm:px-8">
+        {/* `flex-wrap` — confirmed necessary by testing at 380px width,
+            where the theme toggle, plan badge, and "Log out" crowded
+            into an almost-unreadable single row otherwise. */}
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-6 py-4 sm:px-8">
           <div className="flex items-center gap-2.5">
             <LogoMark />
             <span className="text-[15px] font-semibold tracking-tight text-zinc-900 dark:text-white blueprint:text-white">
               NoteMap
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <ThemeToggle />
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase ${
@@ -380,10 +397,32 @@ export default function Dashboard() {
                 data-board-id={board.id}
                 className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.18)] dark:border-white/10 dark:bg-zinc-900 dark:shadow-none dark:hover:border-white/20 dark:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.6)] blueprint:border-white/20 blueprint:bg-white/[0.06] blueprint:shadow-none blueprint:hover:border-white/40 blueprint:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.4)]"
               >
-                <button
-                  type="button"
+                {/* A `div[role="button"]`, not a real `<button>` — on
+                    purpose, and only after a real bug proved why. A
+                    native `<button>` gives free Enter/Space keyboard
+                    activation, but that's specifically tied to whichever
+                    element the browser considers "the button" for
+                    activation purposes, and having the rename `<input>`
+                    nested inside it (invalid HTML content-model-wise, but
+                    something browsers still render) meant typing a plain
+                    space while renaming — i.e. any board name with a
+                    space in it — was silently activating the *button's*
+                    keyup-on-Space handling and navigating away mid-edit,
+                    same as Enter did. `role="button"` gives assistive
+                    tech the right semantics without any of that native
+                    content-model baggage, at the cost of having to wire
+                    up Enter/Space ourselves below. */}
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleOpenBoard(board.id)}
-                  className="flex w-full flex-col items-start text-left"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleOpenBoard(board.id);
+                    }
+                  }}
+                  className="flex w-full cursor-pointer flex-col items-start text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-white blueprint:focus-visible:outline-white"
                 >
                   {/* Two stacked layers, not one element with two `bg-*`
                       utilities — both `bg-gradient-to-br` and an
@@ -403,6 +442,17 @@ export default function Dashboard() {
                         onChange={(event) => setEditingValue(event.target.value)}
                         onBlur={handleCommitRename}
                         onKeyDown={(event) => {
+                          // Stops every keystroke here from bubbling up
+                          // to the card's own `onKeyDown` (which treats
+                          // Enter/Space as "open this board" — see the
+                          // comment on that wrapper for the real bug that
+                          // made this necessary: a space bar keystroke
+                          // typed into a *nested* interactive element
+                          // used to reach a native `<button>` ancestor's
+                          // own activation handling before this was
+                          // switched to a plain `div[role="button"]`
+                          // with keydown handling we fully control).
+                          event.stopPropagation();
                           if (event.key === "Enter") {
                             event.preventDefault();
                             handleCommitRename();
@@ -443,16 +493,42 @@ export default function Dashboard() {
                       </span>
                     </div>
                   </div>
-                </button>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleDeleteBoard(board)}
-                  title="Delete board"
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 opacity-0 shadow-sm backdrop-blur transition-all duration-150 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:bg-black/50 dark:text-white/50 dark:hover:bg-red-500/20 dark:hover:text-red-400 blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-red-500/20 blueprint:hover:text-red-300"
-                >
-                  <TrashIcon />
-                </button>
+                {/* Both action buttons stay hidden until hovered *or*
+                    keyboard-focused — `group-focus-within` (not just
+                    `group-hover`) on the wrapper below means tabbing to
+                    either button makes the whole pair visible, not just
+                    the one that happens to be focused. Without that, a
+                    keyboard user tabbing here would land on a button
+                    they can't see, which defeats the point of it being
+                    reachable at all. This pair is also what makes
+                    renaming possible without a mouse in the first place:
+                    the double-click-to-rename on the name itself (below)
+                    has no keyboard equivalent. */}
+                <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleStartRename(board);
+                    }}
+                    title="Rename board"
+                    aria-label={`Rename "${board.name}"`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:bg-black/50 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+                  >
+                    <PencilIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBoard(board)}
+                    title="Delete board"
+                    aria-label={`Delete "${board.name}"`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 shadow-sm backdrop-blur transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-black/50 dark:text-white/50 dark:hover:bg-red-500/20 dark:hover:text-red-400 blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-red-500/20 blueprint:hover:text-red-300"
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

@@ -115,7 +115,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
   // nodes/edges — then writes back (debounced) on every change after
   // that. See hooks/useSupabaseBoardSync.ts for the mechanics and
   // lib/supabase/board-sync.ts for the actual CRUD.
-  const { status: boardStatus, retry: retryBoardLoad } = useSupabaseBoardSync({
+  const { status: boardStatus, saveStatus, retry: retryBoardLoad } = useSupabaseBoardSync({
     boardId,
     nodes,
     edges,
@@ -145,25 +145,42 @@ function FlowCanvas({ boardId }: { boardId: string }) {
     restore: restoreSnapshot,
   });
 
-  // Ctrl/Cmd+Z (and Shift+Z for redo) — but only when no note is being
-  // edited. Tiptap already owns Ctrl+Z for undoing text while a note is
-  // open (see RichTextEditor's extensions); if this handler also reacted
-  // then, the two undo stacks would fight over the same keystroke.
+  // Escape closes whichever note is open for editing — checked first and
+  // unconditionally (not gated on `editingNoteId` being falsy like the
+  // undo/redo branch below), since it's the one keyboard shortcut in this
+  // handler that only makes sense *while* editing.
+  //
+  // Ctrl/Cmd+Z (Shift+Z or Y for redo, covering both the Mac/cross-platform
+  // and Windows conventions) only fires when no note is being edited.
+  // Tiptap already owns Ctrl+Z for undoing text while a note is open (see
+  // RichTextEditor's extensions); if this handler also reacted then, the
+  // two undo stacks would fight over the same keystroke.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && editingNoteId) {
+        event.preventDefault();
+        setEditingNoteId(null);
+        return;
+      }
       if (editingNoteId) return;
       const isModPressed = event.metaKey || event.ctrlKey;
-      if (!isModPressed || event.key.toLowerCase() !== "z") return;
-      event.preventDefault();
-      if (event.shiftKey) {
+      if (!isModPressed) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if (key === "y") {
+        event.preventDefault();
         redo();
-      } else {
-        undo();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingNoteId, undo, redo]);
+  }, [editingNoteId, setEditingNoteId, undo, redo]);
 
   // Wrap the built-in change handlers to record history right before a
   // note or edge is *removed* — the one node/edge change type that's
@@ -386,15 +403,39 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           />
         </ReactFlow>
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-4">
-          <Link
-            href="/"
-            className="pointer-events-auto rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
-            title="Back to your boards"
-          >
-            ← NoteMap
-          </Link>
-          <div className="pointer-events-auto flex items-center gap-2">
+        {/* `flex-wrap` here (and on the button group below) is what
+            keeps this from overflowing off-screen on a narrow viewport —
+            confirmed by actually testing at 380px width, where "Log out"
+            was previously clipped entirely off the right edge with no
+            way to reach it. Wrapping to a second line beats that, even
+            though it isn't as polished as a dedicated narrow layout
+            would be (out of scope here — see Phase 15 for real
+            touch/mobile work; this is just "don't break," per Phase 8's
+            breakpoints-not-touch scope). */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-3">
+            <Link
+              href="/"
+              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
+              title="Back to your boards"
+            >
+              ← NoteMap
+            </Link>
+            {/* `aria-live="polite"` so a screen reader announces a status
+                change without needing focus here — and renders nothing at
+                all for "idle", so this doesn't add permanent visual noise
+                to the header for the (most common) case of "nothing to
+                report right now." */}
+            <p
+              aria-live="polite"
+              className="text-xs font-medium text-zinc-400 dark:text-white/40 blueprint:text-white/60"
+            >
+              {saveStatus === "saving" && "Saving…"}
+              {saveStatus === "saved" && "Saved"}
+              {saveStatus === "error" && "Couldn't save — will retry on your next change"}
+            </p>
+          </div>
+          <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
             <ThemeToggle />
             <button
               type="button"

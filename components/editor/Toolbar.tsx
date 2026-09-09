@@ -98,6 +98,15 @@ function Button({
     <button
       type="button"
       title={title}
+      // `title` alone isn't reliably announced by screen readers — an
+      // explicit `aria-label` is what actually gives a button like "B" or
+      // "H1" a real accessible name instead of just its (ambiguous, to a
+      // screen reader) visible letter. `aria-pressed` is only included
+      // for genuine toggle buttons (`active` was actually passed in, not
+      // left `undefined` — Undo/Redo/etc. aren't toggles and shouldn't
+      // claim to be one).
+      aria-label={title}
+      aria-pressed={active === undefined ? undefined : active}
       disabled={disabled}
       // Buttons live outside the contentEditable area. Without this, the
       // mousedown would first collapse/move the editor's text selection
@@ -216,6 +225,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
 
       <select
         title="Font"
+        aria-label="Font"
         disabled={disabled}
         value={state.fontFamily}
         onMouseDown={(event) => event.stopPropagation()}
@@ -245,6 +255,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
         <input
           type="number"
           inputMode="numeric"
+          aria-label={`Text size, ${MIN_FONT_SIZE} to ${MAX_FONT_SIZE} pixels`}
           min={MIN_FONT_SIZE}
           max={MAX_FONT_SIZE}
           disabled={disabled}
@@ -308,6 +319,8 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             key={color.label}
             type="button"
             title={color.label}
+            aria-label={`Text color: ${color.label}`}
+            aria-pressed={state.color === color.value}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() =>
@@ -333,6 +346,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             key={color.label}
             type="button"
             title={color.label}
+            aria-label={`Highlight: ${color.label}`}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() =>

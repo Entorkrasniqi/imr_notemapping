@@ -16,6 +16,10 @@ import type { BoardEdge, NoteNode } from "@/types/canvas";
 // only once things settle keeps this to one round trip per pause in
 // activity instead of dozens per second.
 const SAVE_DEBOUNCE_MS = 400;
+// How long a "Saved" confirmation stays visible before fading back to
+// nothing — long enough to actually notice, short enough not to look
+// like a stale/stuck indicator once you've moved on to something else.
+const SAVED_INDICATOR_MS = 2000;
 
 type UseSupabaseBoardSyncOptions = {
   boardId: string;
@@ -26,6 +30,11 @@ type UseSupabaseBoardSyncOptions = {
 };
 
 export type BoardSyncStatus = "loading" | "ready" | "error" | "not-found";
+// Surfaced separately from `status` above: `status` is about whether the
+// board could be *loaded* at all, `saveStatus` is about whether the most
+// recent *edit* has made it back to Postgres yet. A board can be "ready"
+// (loaded fine) while its last change is still "saving" or failed.
+export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 /**
  * Phase 5's replacement for Phase 4's `useBoardPersistence`: the board
@@ -47,6 +56,7 @@ export function useSupabaseBoardSync({
   const supabase = useMemo(() => createClient(), []);
 
   const [status, setStatus] = useState<BoardSyncStatus>("loading");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [retryToken, setRetryToken] = useState(0);
 
   const boardIdRef = useRef<string | null>(null);
@@ -59,6 +69,14 @@ export function useSupabaseBoardSync({
   // otherwise the first render's empty `nodes: []` could get saved
   // (deleting everything) in the window before the real data arrives.
   const hasLoaded = useRef(false);
+  // The save effect's dependencies (`nodes`/`edges`) change the instant
+  // a fresh load finishes too — setNodes/setEdges in `load()` below *is*
+  // a nodes/edges change, as far as that effect can tell. Without this,
+  // every board load would immediately re-upsert everything it just
+  // fetched: harmless (previousNodeIds/edgeIds already match, so nothing
+  // is deleted), but a wasted round trip and a confusing "Saving…" flash
+  // for something the user didn't actually change.
+  const skipNextSave = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +93,7 @@ export function useSupabaseBoardSync({
         boardIdRef.current = boardId;
         previousNodeIds.current = new Set(snapshot.nodes.map((node) => node.id));
         previousEdgeIds.current = new Set(snapshot.edges.map((edge) => edge.id));
+        skipNextSave.current = true;
         // Nothing should appear "selected" the instant a freshly loaded
         // board shows up — that was interaction state from a previous
         // visit, not part of the board's actual saved content.
@@ -82,6 +101,7 @@ export function useSupabaseBoardSync({
         setEdges(snapshot.edges);
         hasLoaded.current = true;
         setStatus("ready");
+        setSaveStatus("idle");
       } catch (error) {
         if (cancelled) return;
         if (error instanceof BoardNotFoundError) {
@@ -101,8 +121,13 @@ export function useSupabaseBoardSync({
 
   useEffect(() => {
     if (!hasLoaded.current || !boardIdRef.current) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
     const boardId = boardIdRef.current;
 
+    setSaveStatus("saving");
     const timeoutId = setTimeout(() => {
       syncBoardToSupabase(
         supabase,
@@ -114,16 +139,27 @@ export function useSupabaseBoardSync({
         .then(({ nodeIds, edgeIds }) => {
           previousNodeIds.current = nodeIds;
           previousEdgeIds.current = edgeIds;
+          setSaveStatus("saved");
         })
         .catch((error) => {
           console.error("Failed to save board to Supabase:", error);
+          setSaveStatus("error");
         });
     }, SAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(timeoutId);
   }, [nodes, edges, supabase]);
 
+  // "Saved" is a confirmation, not a permanent state — it fades back to
+  // idle on its own after a bit, the same way a toast would, rather than
+  // sitting there forever until the next edit happens to replace it.
+  useEffect(() => {
+    if (saveStatus !== "saved") return;
+    const timeoutId = setTimeout(() => setSaveStatus("idle"), SAVED_INDICATOR_MS);
+    return () => clearTimeout(timeoutId);
+  }, [saveStatus]);
+
   const retry = useCallback(() => setRetryToken((token) => token + 1), []);
 
-  return { status, retry };
+  return { status, saveStatus, retry };
 }

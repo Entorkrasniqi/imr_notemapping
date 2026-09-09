@@ -79,17 +79,30 @@ this exists after Phase 0):
                          at the root route; the canvas moved out to
                          /board/[boardId] below
   /board/[boardId]      ✓ Phase 7 — the canvas, one route per board
+  error.tsx             ✓ Phase 8 — catches unexpected runtime errors
+                         anywhere under /app in a React error boundary
+  not-found.tsx         ✓ Phase 8 — friendly 404 for any unmatched URL
+                         (only reachable signed-in — proxy.ts redirects
+                         signed-out visitors to /login first, including
+                         for URLs that don't exist)
 /components
   /canvas                React Flow wrapper, custom node/edge components
   /editor                Tiptap editor + toolbar
   /dashboard             ✓ Phase 7 — Dashboard.tsx: board list, create/
-                         rename (double-click a name)/delete/open, free-
-                         plan limit messaging
+                         rename (double-click a name, or the keyboard-
+                         reachable pencil button added in Phase 8)/
+                         delete/open, free-plan limit messaging
+  /theme                 ✓ Phase 8 — ThemeToggle.tsx, the light/dark/
+                         blueprint switcher shared by the dashboard and
+                         board headers
 /lib
   /supabase              ✓ Supabase client factory — browser (Phase 5) +
                          server (Phase 6) variants, both now in use; plus
                          board-sync.ts (single-board load/save) and
                          boards.ts (Phase 7 — dashboard CRUD + listing)
+  /theme                 ✓ Phase 8 — theme-context.tsx: the ThemeProvider
+                         and useTheme() hook backing ThemeToggle, plus the
+                         inline anti-flash script injected in layout.tsx
 /hooks                   Reusable hooks (useBoardHistory, useSupabaseBoardSync, …)
 /types                   Shared TypeScript types (Node content, Board, Edge)
 /docs                    This document and friends

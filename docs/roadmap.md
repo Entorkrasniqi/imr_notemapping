@@ -29,10 +29,21 @@ This tracks phase status. Each phase is scoped deliberately narrow — see
 - [x] **Phase 7 — Dashboard.** Board list (name, last updated, note count),
       create/rename/delete/open, 3-board free-plan limit enforced at both
       the UI and database level.
-- [ ] **Phase 8 — Polish.** Loading/error/empty states, keyboard shortcuts,
-      autosave refinement, undo/redo, performance pass, accessibility,
-      general responsive layout (breakpoints, not touch input — see
-      Phase 15 for that).
+- [x] **Phase 8 — Polish.** Loading/error/empty states (`app/error.tsx`,
+      `app/not-found.tsx`), keyboard shortcuts (Escape to stop editing,
+      Ctrl+Y as an alternate redo), autosave refinement (a visible
+      Saving…/Saved indicator, and no more redundant just-after-load
+      save), undo/redo (unchanged, already solid — verified, not
+      rebuilt), accessibility (keyboard-reachable board rename, toolbar
+      `aria-label`/`aria-pressed`), general responsive layout (breakpoints,
+      not touch input — see Phase 15 for that). Two real bugs found and
+      fixed along the way, not just polish: Backspace while editing a
+      note's text was never actually at risk of deleting the note (verified,
+      not assumed), but renaming a board to anything containing a space and
+      pressing Enter was silently navigating away instead of saving — caused
+      by an `<input>` invalidly nested inside a `<button>`, fixed by
+      restructuring the board card's clickable area to a
+      `div[role="button"]` with its own keyboard handling.
 - [ ] **Phase 9 — Billing.** Stripe Checkout + customer portal for
       upgrading/downgrading; a webhook route (the app's first genuinely
       server-side endpoint — everything before this talks to Supabase
