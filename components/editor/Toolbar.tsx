@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useEditorState, type Editor } from "@tiptap/react";
 
 type Alignment = "left" | "center" | "right" | "justify";
@@ -17,6 +19,7 @@ type ToolbarState = {
   fontFamily: string;
   fontSize: string;
   color: string | null;
+  highlightColor: string | null;
   canUndo: boolean;
   canRedo: boolean;
 };
@@ -36,6 +39,7 @@ const IDLE_STATE: ToolbarState = {
   fontFamily: "",
   fontSize: "",
   color: null,
+  highlightColor: null,
   canUndo: false,
   canRedo: false,
 };
@@ -125,13 +129,130 @@ function Button({
 }
 
 /**
+ * A single compact trigger button that opens a small floating palette
+ * above it — this is what replaced nine always-visible color dots with
+ * two buttons: the palette only takes up space while it's actually open,
+ * instead of permanently occupying toolbar width whether or not anyone's
+ * about to use it.
+ */
+function ColorMenu({
+  label,
+  swatchColor,
+  letter,
+  isOpen,
+  onToggle,
+  onClose,
+  children,
+}: {
+  label: string;
+  /** The color shown in the little bar under the letter — the button's
+   * own way of saying "here's the color currently applied," without
+   * needing every possible color visible at once to show it. */
+  swatchColor: string | null;
+  letter: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // Computed fresh each time the menu opens, from the trigger's actual
+  // on-screen position — this menu is portaled to `document.body` (see
+  // the render below), specifically to sidestep a real CSS surprise: the
+  // toolbar this trigger lives in has `overflow-x-auto` (needed so it
+  // scrolls sideways on narrow screens instead of clipping controls —
+  // see NoteEditorModal), and per the CSS overflow spec, giving *either*
+  // axis a non-`visible` value forces the *other* axis to compute as
+  // `auto` too, not `visible` — there's no way to keep just one axis
+  // scrollable and the other truly unclipped. A popover positioned
+  // `absolute` inside that toolbar was therefore silently clipped by the
+  // *vertical* overflow nobody asked for, which is exactly what made the
+  // color swatches unclickable the first time this was built this way.
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setPosition({ top: rect.top, left: rect.left });
+  }, [isOpen]);
+
+  // Closes on any click outside the trigger *or* the portaled menu —
+  // checked separately since, with the menu now in a different part of
+  // the DOM, a single shared ancestor to test against no longer exists.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      onClose();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen, onClose]);
+
+  // Escape closes just this popover, not the whole note editor modal —
+  // captured ahead of Board.tsx's own window-level Escape handler (which
+  // runs on the bubble phase) by listening on the capture phase instead,
+  // so `stopPropagation` here reaches it before that handler ever runs.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [isOpen, onClose]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-haspopup="true"
+        aria-expanded={isOpen}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onToggle}
+        className="flex shrink-0 flex-col items-center gap-0.5 rounded px-1.5 py-1 leading-none text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+      >
+        <span className="text-xs font-bold">{letter}</span>
+        <span
+          className="h-[3px] w-3.5 rounded-full"
+          style={{ backgroundColor: swatchColor ?? "currentColor" }}
+        />
+      </button>
+      {isOpen &&
+        position &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: "fixed", top: position.top, left: position.left, transform: "translateY(-100%)" }}
+            className="z-50 mb-2 flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-white/10 dark:bg-zinc-800 blueprint:border-white/20 blueprint:bg-[#0f3057]"
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+/**
  * The formatting controls for whichever note is currently being edited.
  *
- * This renders inside `FormattingDock`, a floating bar below the canvas —
- * not inside the note itself. `editor` is whatever `ActiveEditorContext`
- * currently holds, which is `null` whenever no note is selected; every
- * control here is written to degrade to an inert, greyed-out state in
- * that case rather than assume an editor exists.
+ * This renders inside `NoteEditorModal`'s own footer, not inside the note
+ * tile on the canvas — there's no live editor there any more to control.
+ * `editor` is whatever `ActiveEditorContext` currently holds, which is
+ * only ever non-null while that modal is open (RichTextEditor registers
+ * itself there on mount); every control here is written to degrade to an
+ * inert, greyed-out state via `IDLE_STATE` rather than assume an editor
+ * exists, though in practice this component only ever renders while one
+ * does now.
  */
 export default function Toolbar({ editor }: { editor: Editor | null }) {
   // `useEditorState` subscribes to exactly the derived values this toolbar
@@ -159,6 +280,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
           fontFamily: (editor.getAttributes("textStyle").fontFamily as string) ?? "",
           fontSize: (editor.getAttributes("textStyle").fontSize as string) ?? "",
           color: (editor.getAttributes("textStyle").color as string) ?? null,
+          highlightColor: (editor.getAttributes("highlight").color as string) ?? null,
           canUndo: editor.can().undo(),
           canRedo: editor.can().redo(),
         };
@@ -166,6 +288,10 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
     }) ?? IDLE_STATE;
 
   const disabled = !editor;
+  // Only one color palette open at a time — opening one and clicking the
+  // other's trigger switches directly to it rather than needing a second
+  // click to close the first.
+  const [openMenu, setOpenMenu] = useState<"color" | "highlight" | null>(null);
 
   return (
     <div className="nodrag nowheel flex items-center gap-0.5 whitespace-nowrap">
@@ -313,7 +439,19 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
 
       <Divider />
 
-      <div className="flex shrink-0 items-center gap-0.5" title="Text color">
+      {/* Nine always-visible color dots collapsed into two compact
+          triggers, each opening its own small palette on demand — the
+          toolbar now spends space on a color only while someone's
+          actually choosing one, not all the time whether or not anyone
+          is. */}
+      <ColorMenu
+        label="Text color"
+        letter="A"
+        swatchColor={state.color}
+        isOpen={openMenu === "color"}
+        onToggle={() => setOpenMenu((current) => (current === "color" ? null : "color"))}
+        onClose={() => setOpenMenu(null)}
+      >
         {TEXT_COLORS.map((color) => (
           <button
             key={color.label}
@@ -323,11 +461,14 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             aria-pressed={state.color === color.value}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() =>
-              color.value
-                ? editor?.chain().focus().setColor(color.value).run()
-                : editor?.chain().focus().unsetColor().run()
-            }
+            onClick={() => {
+              if (color.value) {
+                editor?.chain().focus().setColor(color.value).run();
+              } else {
+                editor?.chain().focus().unsetColor().run();
+              }
+              setOpenMenu(null);
+            }}
             className={`h-4 w-4 shrink-0 rounded-full border transition-transform disabled:cursor-not-allowed disabled:opacity-30 ${
               state.color === color.value
                 ? "scale-110 border-zinc-500 dark:border-white blueprint:border-white"
@@ -336,22 +477,29 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             style={{ backgroundColor: color.value ?? "#ffffff" }}
           />
         ))}
-      </div>
+      </ColorMenu>
 
-      <Divider />
-
-      <div className="flex shrink-0 items-center gap-0.5" title="Highlight">
+      <ColorMenu
+        label="Highlight"
+        letter="H"
+        swatchColor={state.highlightColor}
+        isOpen={openMenu === "highlight"}
+        onToggle={() => setOpenMenu((current) => (current === "highlight" ? null : "highlight"))}
+        onClose={() => setOpenMenu(null)}
+      >
         {HIGHLIGHT_COLORS.map((color) => (
           <button
             key={color.label}
             type="button"
             title={color.label}
             aria-label={`Highlight: ${color.label}`}
+            aria-pressed={state.highlightColor === color.value}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() =>
-              editor?.chain().focus().toggleHighlight({ color: color.value }).run()
-            }
+            onClick={() => {
+              editor?.chain().focus().toggleHighlight({ color: color.value }).run();
+              setOpenMenu(null);
+            }}
             className="h-4 w-4 shrink-0 rounded-full border border-zinc-200 transition-transform disabled:cursor-not-allowed disabled:opacity-30 hover:scale-110 dark:border-white/30 blueprint:border-white/40"
             style={{ backgroundColor: color.value }}
           />
@@ -359,11 +507,14 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
         <Button
           title="Clear highlight"
           disabled={disabled}
-          onClick={() => editor?.chain().focus().unsetHighlight().run()}
+          onClick={() => {
+            editor?.chain().focus().unsetHighlight().run();
+            setOpenMenu(null);
+          }}
         >
           ✕
         </Button>
-      </div>
+      </ColorMenu>
 
       <Divider />
 

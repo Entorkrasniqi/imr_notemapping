@@ -11,17 +11,8 @@ import {
 } from "@xyflow/react";
 import type { NoteNode as NoteNodeType } from "@/types/canvas";
 import { getNoteExtensions } from "@/lib/editor/extensions";
-import { appendImageBlock, isEmptyContent } from "@/lib/editor/content";
-import { useActiveEditor } from "@/lib/editor/active-editor-context";
+import { appendImageBlock, isEmptyContent, MAX_IMAGE_BYTES } from "@/lib/editor/content";
 import { useRecordBeforeChange } from "@/hooks/useBoardHistory";
-import RichTextEditor from "@/components/editor/RichTextEditor";
-
-// A dropped image is embedded directly in the note's own JSON as a base64
-// data URL — there's no file upload/storage backend yet (that's Phase 5).
-// This caps how large a single embed can get, since base64 inflates a
-// file's size by roughly a third and everything lives in memory/React
-// state until then.
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 // Forty fixed connection points around each note: all four corners, plus
 // nine evenly spaced points along each of the four edges. When you release
@@ -196,27 +187,8 @@ function NotePreview({ content }: { content: JSONContent | null }) {
  */
 function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
   const { updateNodeData, deleteElements } = useReactFlow();
-  // `selected` and `isEditing` are still two separate pieces of state —
-  // React Flow's own node selection vs. this app's `editingNoteId` — even
-  // though a single click now sets both at once (see Board.tsx's
-  // `handleNodeClick`). A note that's already open for editing has
-  // `nodrag` on its live editor content (RichTextEditor), so a *second*,
-  // separate click-and-drag gesture aimed at its text won't move it —
-  // same as clicking into a text field in most note apps. Dragging a
-  // still-closed note works normally (mousedown-and-move on the preview
-  // is never `nodrag`), and an already-open note can still be dragged by
-  // its padding — see the comment on that wrapper below.
-  const { editingNoteId, activeEditor } = useActiveEditor();
-  const isEditing = editingNoteId === id;
   const recordBeforeChange = useRecordBeforeChange();
   const [isDragOver, setIsDragOver] = useState(false);
-
-  const handleChange = useCallback(
-    (content: JSONContent) => {
-      updateNodeData(id, { content });
-    },
-    [id, updateNodeData],
-  );
 
   const handleDelete = useCallback(
     (event: React.MouseEvent) => {
@@ -226,12 +198,14 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
     [id, deleteElements],
   );
 
-  // Drag a JPEG in from the OS (Finder, Desktop, …) and drop it on a note
-  // to embed it — works whether the note is open for editing or not. If
-  // it's the note currently being edited, the image goes in through its
-  // own live editor instance (`activeEditor`) so it appears immediately;
-  // otherwise it's appended straight to the stored content, ready to show
-  // the next time the note is opened.
+  // Drag a JPEG in from the OS (Finder, Desktop, …) and drop it on a
+  // *closed* note tile to embed it, appended straight to the stored
+  // content so it's there the next time the note is opened. This can
+  // only ever fire on a closed tile now: opening a note for editing puts
+  // a full-viewport modal (see NoteEditorModal) above the whole canvas,
+  // so there's no way to reach any tile at all — this one included —
+  // while it (or any other note) is actively open. Dropping an image
+  // onto a note that's already open happens inside that modal instead.
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) return;
     // Required to allow a drop at all — browsers reject drops on any
@@ -270,15 +244,11 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
       reader.onload = () => {
         const src = reader.result;
         if (typeof src !== "string") return;
-        if (isEditing && activeEditor) {
-          activeEditor.chain().focus().setImage({ src }).run();
-        } else {
-          updateNodeData(id, { content: appendImageBlock(data.content, src) });
-        }
+        updateNodeData(id, { content: appendImageBlock(data.content, src) });
       };
       reader.readAsDataURL(file);
     },
-    [id, isEditing, activeEditor, data.content, updateNodeData],
+    [id, data.content, updateNodeData],
   );
 
   return (
@@ -295,23 +265,6 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Draggable resize handles, shown only while a note is open for
-          editing — resizing a *closed* note (showing just its title)
-          wouldn't reveal anything, since the body it'd make room for is
-          hidden either way. Its thin blue outline (`lineClassName`) is
-          also what visually distinguishes "open and editable" from merely
-          "selected," which only lights up the connection dots below.
-          `onResizeStart` records the pre-resize size so it's undoable as
-          one step, not a snapshot per pixel dragged. */}
-      <NodeResizer
-        isVisible={isEditing}
-        minWidth={220}
-        minHeight={140}
-        lineClassName="!border-blue-400 blueprint:!border-white"
-        handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border !border-blue-400 !bg-white blueprint:!border-white blueprint:!bg-[#0f3057]"
-        onResizeStart={recordBeforeChange}
-      />
-
       {HANDLE_POSITIONS.map((handle) => (
         <Handle
           key={handle.id}
@@ -340,6 +293,43 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           className="!rounded-none !border-none !bg-transparent"
         />
       ))}
+
+      {/* Draggable resize handles, shown while the note is selected —
+          this now controls only the *canvas tile's* footprint (how much
+          visual weight this note has among others), not "how much of its
+          body is visible": opening a note for real reading/editing now
+          always means the big modal (see NoteEditorModal), regardless of
+          how big or small its tile is. `onResizeStart` records the
+          pre-resize size so it's undoable as one step, not a snapshot
+          per pixel dragged.
+
+          Rendered *after* the connection handles above on purpose, not
+          just after in reading order: this note's four corners are
+          shared, contested space — a connection handle and a resize
+          handle both want to live exactly there. Whichever one is later
+          in the DOM wins hit-testing for any pixel they overlap, so
+          putting NodeResizer last is what makes a corner drag mean
+          "resize," not "start an arrow," which is the more common thing
+          to want at a corner specifically.
+
+          Both `lineClassName` and `handleClassName` are fully
+          transparent — no visible line, no visible squares. The resize
+          affordance is invisible for the same reason the connection
+          handles are: this note has no visible box to begin with (see
+          the comment on the un-decorated content wrapper below), and a
+          visible square at each corner read as a separate, boxy UI
+          element sitting on top of that otherwise-plain design. The hit
+          area is still real, and — since nothing here needs to look
+          like anything — allowed to be considerably bigger than the
+          10px default, so finding it doesn't take precise aim. */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={220}
+        minHeight={56}
+        lineClassName="!border-transparent"
+        handleClassName="!h-5 !w-5 !rounded-none !border-none !bg-transparent"
+        onResizeStart={recordBeforeChange}
+      />
 
       {/* The visual stand-in for all forty handles above: one unbroken
           rounded-rectangle line around the note, so every edge — top and
@@ -385,27 +375,16 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           </button>
         )}
 
-        {/* A single click opens this for editing (see Board.tsx's
-            `handleNodeClick`) — a real drag gesture never reaches that
-            handler, since React Flow only fires a node's click callback
-            when the pointer didn't move past its own drag threshold, so
-            dragging the note is unaffected. Its formatting toolbar lives
-            outside the canvas, in `FormattingDock`, which finds this
-            editor via `ActiveEditorContext` rather than through props.
-
-            The `p-3` here still matters while editing, even with no
-            visible border to speak of: RichTextEditor marks its own
-            content `nodrag` (so clicking to place a text cursor, or
-            dragging across text to select it, doesn't drag the note
-            instead). This padding belongs to *this* wrapper, not the
-            editor, so it's never nodrag — an invisible but real margin you
-            can still drag the note by even mid-edit. */}
+        {/* A single click opens this note in the editor modal (see
+            Board.tsx's `handleNodeClick` and `NoteEditorModal`) — a real
+            drag gesture never reaches that handler, since React Flow
+            only fires a node's click callback when the pointer didn't
+            move past its own drag threshold, so dragging the note is
+            unaffected. This tile always shows the same read-only
+            preview now; there's no separate "open, in place" look to
+            switch to any more. */}
         <div className="min-h-0 flex-1 overflow-hidden p-3">
-          {isEditing ? (
-            <RichTextEditor content={data.content} onChange={handleChange} />
-          ) : (
-            <NotePreview content={data.content} />
-          )}
+          <NotePreview content={data.content} />
         </div>
       </div>
     </div>

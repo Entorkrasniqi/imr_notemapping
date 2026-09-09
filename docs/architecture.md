@@ -86,8 +86,11 @@ this exists after Phase 0):
                          signed-out visitors to /login first, including
                          for URLs that don't exist)
 /components
-  /canvas                React Flow wrapper, custom node/edge components
-  /editor                Tiptap editor + toolbar
+  /canvas                React Flow wrapper, custom node/edge components,
+                         NoteEditorModal.tsx (the note-editing surface —
+                         a portal-rendered modal, not an on-canvas panel)
+  /editor                Tiptap editor + toolbar, both mounted inside
+                         NoteEditorModal now rather than on the canvas
   /dashboard             ✓ Phase 7 — Dashboard.tsx: board list, create/
                          rename (double-click a name, or the keyboard-
                          reachable pencil button added in Phase 8)/
@@ -120,15 +123,21 @@ Guiding rules for this layer:
 - **Canvas state lives in React Flow's model** (`nodes`, `edges` arrays with
   position/size/data), not duplicated into a second parallel state tree.
   Each node's `data` field holds a reference to its Tiptap JSON content.
-- **Editor state lives in Tiptap**, scoped to the node currently being
-  edited. Text is edited in place, inside whichever note card is
-  selected — only one note is ever selected at a time, so at most one live
-  editor instance exists; every other note renders static, read-only
-  content instead. That editor's *formatting toolbar*, though, lives
-  outside the canvas entirely, in a small floating dock, and finds the
-  active editor through a small shared context rather than through props
-  (`lib/editor/active-editor-context.tsx`) — the text and the controls
-  for it are no longer in the same part of the component tree.
+- **Editor state lives in Tiptap**, scoped to whichever one note is
+  currently open for editing — at most one live editor instance ever
+  exists; every note tile on the canvas renders static, read-only content
+  instead, all the time. Editing doesn't happen in place on the canvas:
+  opening a note mounts `NoteEditorModal`, a large centered panel with
+  its own backdrop, rendered via a React portal straight to
+  `document.body` — deliberately outside React Flow's own DOM tree, not
+  merely styled to look on top of it, so panning/zooming/clicking the
+  canvas simply can't happen while it's open; nothing behind the backdrop
+  is reachable at all. That modal's *formatting toolbar* lives in its own
+  footer, and finds the active editor through a small shared context
+  rather than through props (`lib/editor/active-editor-context.tsx`) —
+  the text and the controls for it are still in different components, now
+  just both inside the same modal instead of one being on the canvas and
+  the other in a floating dock elsewhere on screen.
 - **Persistence is a separate concern from interaction.** Local phases
   (1–4) keep everything in memory/localStorage. Supabase is introduced in
   Phase 5 as a sync layer underneath the same React Flow state, not as a

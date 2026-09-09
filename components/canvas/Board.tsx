@@ -24,7 +24,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import NoteNode from "./NoteNode";
 import DeletableEdge from "./DeletableEdge";
-import FormattingDock from "./FormattingDock";
+import NoteEditorModal from "./NoteEditorModal";
 import { ActiveEditorProvider, useActiveEditor } from "@/lib/editor/active-editor-context";
 import { RecordBeforeChangeProvider, useBoardHistory } from "@/hooks/useBoardHistory";
 import { useSupabaseBoardSync } from "@/hooks/useSupabaseBoardSync";
@@ -54,12 +54,14 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
 };
 
 const DEFAULT_NOTE_WIDTH = 240;
-const DEFAULT_NOTE_HEIGHT = 160;
-// A closed note shows only its title (see NoteNode/NotePreview) — this is
-// just tall enough for one line of the larger title text plus the small
-// "more content" hint, so a closed note doesn't carry empty dead space
-// sized for a body nobody can currently see.
-const COLLAPSED_NOTE_HEIGHT = 56;
+// A note's canvas tile always shows just its title (see NoteNode/
+// NotePreview) — reading or editing the full body happens in the editor
+// modal now, not in place, so there's no separate "closed" vs. "open"
+// size to distinguish any more. This default is just tall enough for one
+// line of the larger title text plus the small "more content" hint;
+// resizing a tile bigger is purely a visual-weight choice now, not a way
+// to reveal more content.
+const DEFAULT_NOTE_HEIGHT = 56;
 
 /** Builds a new note node centered on a given flow-space position. */
 function createNote(center: { x: number; y: number }): NoteNodeType {
@@ -108,6 +110,11 @@ function FlowCanvas({ boardId }: { boardId: string }) {
   // drag/select/resize/remove updates for us.
   const [nodes, setNodes, onNodesChange] = useNodesState<NoteNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([]);
+  // The note the editor modal should show, if any. A plain `.find()`
+  // recomputed each render rather than a `useMemo` — `nodes` is small and
+  // this runs once per render regardless, not per keystroke; memoizing an
+  // O(n) scan over a handful of notes buys nothing here.
+  const editingNote = nodes.find((node) => node.id === editingNoteId);
 
   // Phase 5: the board now lives in Postgres instead of localStorage
   // (Phase 4). This loads it once on mount — establishing a session,
@@ -207,55 +214,6 @@ function FlowCanvas({ boardId }: { boardId: string }) {
     [onEdgesChange, recordBeforeChange],
   );
 
-  // Text-edit mode should end the moment its note is no longer the
-  // selected one — clicking a different note, or clicking empty canvas,
-  // both already change `nodes[].selected` via React Flow's own click
-  // handling, so this just has to notice the mismatch and follow it.
-  // Without this, editing a note and then clicking straight past it onto
-  // another note would leave the first one stuck in edit mode.
-  useEffect(() => {
-    if (!editingNoteId) return;
-    const editingNote = nodes.find((node) => node.id === editingNoteId);
-    if (!editingNote?.selected) {
-      setEditingNoteId(null);
-    }
-  }, [nodes, editingNoteId, setEditingNoteId]);
-
-  // Shrinks a note to fit just its title the moment it stops being edited,
-  // and restores whatever height it had before the next time it's opened
-  // again. Tracking the *previous* editingNoteId in a ref (rather than
-  // reading it from state) is what lets this tell "a note just opened"
-  // apart from "a note just closed" in one effect, since by the time it
-  // runs, `editingNoteId` itself already only reflects the new state.
-  const previousEditingNoteId = useRef<string | null>(null);
-  useEffect(() => {
-    const previousId = previousEditingNoteId.current;
-    previousEditingNoteId.current = editingNoteId;
-    if (previousId === editingNoteId) return;
-
-    setNodes((current) =>
-      current.map((node) => {
-        if (node.id === previousId) {
-          return {
-            ...node,
-            height: COLLAPSED_NOTE_HEIGHT,
-            data: {
-              ...node.data,
-              expandedHeight: node.height ?? DEFAULT_NOTE_HEIGHT,
-            },
-          };
-        }
-        if (node.id === editingNoteId) {
-          return {
-            ...node,
-            height: node.data.expandedHeight ?? DEFAULT_NOTE_HEIGHT,
-          };
-        }
-        return node;
-      }),
-    );
-  }, [editingNoteId, setNodes]);
-
   // A single click opens a note for editing. This is safe against
   // dragging because React Flow already tells the two apart itself:
   // `onNodeClick` only fires for a genuine click (mouseup near where the
@@ -318,13 +276,16 @@ function FlowCanvas({ boardId }: { boardId: string }) {
   // expose a "pane double click" event of its own — only per-node/per-edge
   // ones. We guard against double-clicking an existing note (which should
   // just select/focus it, not stack a new note on top) and against
-  // double-clicking inside the floating formatting dock — it renders
-  // outside any `.react-flow__node`, so it needs its own check.
+  // double-clicking inside the note editor modal — it's rendered via a
+  // portal straight to `document.body` (see NoteEditorModal), so its
+  // actual DOM sits outside this wrapper entirely, but React still
+  // bubbles the event through the *component* tree the portal was
+  // created from, which does pass through here.
   const handleWrapperDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement;
       if (target.closest(".react-flow__node")) return;
-      if (target.closest("[data-formatting-dock]")) return;
+      if (target.closest("[data-note-editor-modal]")) return;
       addNoteAtScreenPoint(event.clientX, event.clientY);
     },
     [addNoteAtScreenPoint],
@@ -393,8 +354,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           <Controls showInteractive={false} />
           {/* Default position (bottom-right) pairs with Controls' default
               (bottom-left) below — the conventional, non-colliding layout
-              most React Flow boards use. FormattingDock is centered at
-              the bottom and stays clear of both corners in practice. */}
+              most React Flow boards use. */}
           <MiniMap
             pannable
             zoomable
@@ -519,7 +479,7 @@ function FlowCanvas({ boardId }: { boardId: string }) {
           </div>
         )}
 
-        <FormattingDock />
+        {editingNote && <NoteEditorModal note={editingNote} />}
       </div>
     </RecordBeforeChangeProvider>
   );

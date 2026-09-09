@@ -13,11 +13,12 @@ import type { JSONContent } from "@tiptap/react";
 export type NoteNodeData = {
   content: JSONContent | null;
   /**
-   * The note's height the last time it was open for editing. A closed
-   * note's box shrinks to fit just its title (see `Board.tsx`'s
-   * shrink/expand effect) — this is what lets it grow back to whatever
-   * size the user actually set, rather than a fixed default, next time
-   * it's opened.
+   * Unused as of the editor-modal redesign — kept only so existing rows
+   * with a saved value don't need a migration to drop the column. It
+   * used to hold a note's pre-collapse height, back when opening a note
+   * for editing grew its canvas tile in place; now editing always opens
+   * `NoteEditorModal` instead, so a tile's size is a plain, direct
+   * resize choice with no separate "expanded" state to remember.
    */
   expandedHeight?: number;
 };

@@ -17,23 +17,20 @@ const ActiveEditorContext = createContext<ActiveEditorContextValue | null>(null)
  * Tracks two related things for the whole board:
  *
  *  - `activeEditor`: which note's Tiptap editor instance is currently
- *    mounted, so the shared formatting dock
- *    (`components/canvas/FormattingDock.tsx`) knows which editor its
- *    buttons should act on.
- *  - `editingNoteId`: which note is in text-edit mode at all — i.e. which
- *    one `NoteNode` should render its live `RichTextEditor` for, versus
- *    the read-only preview.
+ *    mounted, so the formatting toolbar embedded in `NoteEditorModal`'s
+ *    footer knows which editor its buttons should act on.
+ *  - `editingNoteId`: which note is open for editing at all — i.e. which
+ *    one `NoteEditorModal` should be showing, if any.
  *
- * These are deliberately *not* the same thing as "which note is selected."
- * Selecting a note (a single click) only highlights it and shows its
- * resize/connection handles — it stays fully draggable from anywhere,
- * exactly like an unselected note, because its content is still the
- * read-only preview (no `nodrag` anywhere in it). Entering text-edit mode
- * is a separate, deliberate action (double-click) precisely because that's
- * the one state where clicking-and-dragging over the content needs to mean
- * "select text," not "move the note" — conflating the two made every
- * selected note sticky to drag, since almost its whole surface became
- * `nodrag` the moment it was merely clicked once.
+ * `editingNoteId` is deliberately *not* the same thing as "which note is
+ * selected" on the canvas. Selecting a note (a single click) highlights
+ * its tile and shows its resize/connection handles there — that's a
+ * React-Flow-native concept, tracked as each node's own `selected` flag,
+ * unrelated to whether its *editor* is open. A single click currently
+ * sets both at once (see Board.tsx's `handleNodeClick`), but they stay
+ * two separate pieces of state because they mean different things: one is
+ * about a tile on the canvas, the other is about a modal that isn't part
+ * of the canvas at all.
  */
 export function ActiveEditorProvider({ children }: { children: ReactNode }) {
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
