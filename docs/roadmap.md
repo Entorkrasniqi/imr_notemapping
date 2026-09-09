@@ -113,3 +113,102 @@ feat: add touch-first mobile canvas interactions  (Phase 15)
 
 Commits are suggested at the end of each phase along with what to test
 first — not made automatically.
+
+---
+
+# NoteMap Desktop — Roadmap
+
+A separate, parallel track for wrapping the web app as a native-feeling
+desktop app (macOS, Windows, Linux) via Tauri. This does not replace or
+fork the web app — the Next.js/Supabase codebase in `/app`, `/components`,
+`/lib` stays the single source of truth. Desktop work lives in its own
+`src-tauri/` directory inside the same repo, versioned alongside the app
+it wraps.
+
+These phases are independent of Phases 9-15 above and can be picked up
+at any point once the web app is stable enough to be worth shipping as a
+standalone app — there's no hard dependency either direction, though
+sharing (Phase 10) and offline-friendly billing (Phase 9) are worth
+having before a wide desktop release, not before starting development.
+
+## Phase status
+
+- [ ] **D1 — Tauri scaffold (thin shell).** `npx tauri init` inside the
+      existing repo. `tauri.conf.json` points `frontendDist` at the live
+      deployed URL (Vercel) — no frontend code changes. Window sizing,
+      title, and app identifier configured. Runs and authenticates
+      identically to the web app, since nothing about the app itself has
+      changed; this phase proves the wrapper, nothing more.
+- [ ] **D2 — Branding & icons.** Full `icons/` set generated from a source
+      app icon (`.icns` for macOS, `.ico` for Windows, PNGs for Linux) via
+      the Tauri CLI icon command. App name, identifier
+      (`com.yourdomain.notemap` — pending the rename discussed
+      separately), and window chrome finalized.
+- [ ] **D3 — macOS universal build.** `rustup target add
+      x86_64-apple-darwin aarch64-apple-darwin`, then
+      `tauri build --target universal-apple-darwin` to produce one
+      `.dmg`/`.app` covering both Apple Silicon and Intel. Code signing
+      and notarization configured in `tauri.conf.json`'s
+      `bundle.macOS` block (requires an Apple Developer account).
+- [ ] **D4 — Windows build.** `tauri build --target
+      x86_64-pc-windows-msvc` producing `.msi`/NSIS `.exe`. Decide and
+      configure whether the WebView2 runtime is bundled with the
+      installer or assumed present (pre-installed on current Windows
+      10/11, not guaranteed on older Windows 10 builds). Windows
+      code-signing cert obtained if avoiding SmartScreen warnings on
+      first run matters for this release.
+- [ ] **D5 — Linux build.** `tauri build --target
+      x86_64-unknown-linux-gnu` producing `.deb`/`.AppImage`. Verify
+      WebKitGTK-based rendering matches the macOS/Windows experience
+      closely enough — this is the platform most likely to need visual
+      QA passes given the different WebView engine.
+- [ ] **D6 — CI release pipeline.** GitHub Actions workflow (Tauri's
+      official action) building all three platforms in parallel on a
+      tagged release, producing signed installers for macOS, Windows,
+      and Linux from one trigger. Removes the need for a physical
+      Windows/Linux machine to cut a release.
+- [ ] **D7 — Auto-updates.** Tauri's official updater plugin wired in,
+      with a release feed the app checks on launch. Deliberately sequenced
+      before wide distribution, not after — retrofitting auto-update into
+      an already-distributed app means the first version can never
+      self-update.
+- [ ] **D8 — Bundled/offline shell (stretch).** Revisit D1's thin-shell
+      approach in favor of a static export bundled inside the app, if
+      offline app-shell startup or reduced network dependency becomes a
+      priority. Requires: `output: 'export'` in `next.config`,
+      `images.unoptimized`, converting `proxy.ts` route protection to a
+      client-side session check (static export has no middleware/server),
+      collapsing `/board/[boardId]` to a single static route reading the
+      board ID client-side instead of from the path, and a registered
+      custom URL scheme (e.g. `notemap://`) so Supabase auth magic-link
+      emails can deep-link back into the app window. Not required for D1-D7
+      to ship — the live-URL shell is a complete, valid product on its own.
+
+## Notes on the desktop track
+
+D1-D3 get you a real, distributable Mac app quickly and are the natural
+first slice — matches the platform already being developed on. D4-D5
+extend to Windows/Linux once the shell approach is proven on one
+platform, rather than debugging three WebView engines simultaneously.
+D6-D7 are about not having to do releases by hand forever, and are worth
+doing before, not after, the first public release goes out to real
+users. D8 is explicitly optional and only worth revisiting if a concrete
+need (offline use, faster cold start, less reliance on the hosted URL
+being up) shows up later — the thin-shell approach in D1 is not a
+stopgap, it's a legitimate end state if nothing forces a change.
+
+## Git convention
+
+```
+feat: scaffold Tauri desktop shell               (D1)
+feat: add desktop app icons and branding          (D2)
+feat: add macOS universal build + signing         (D3)
+feat: add Windows build + WebView2 handling       (D4)
+feat: add Linux build                             (D5)
+ci: add multi-platform release pipeline           (D6)
+feat: add desktop auto-updates                    (D7)
+feat: convert desktop shell to bundled static app (D8)
+```
+
+Commits are suggested at the end of each phase along with what to test
+first — not made automatically.
