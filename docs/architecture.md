@@ -24,10 +24,11 @@ decisions ad hoc.
 | Rich text | Tiptap | A ProseMirror wrapper that gives us a document model (JSON, not raw HTML strings) with clean extension points for bold/italic/headings/lists/color/highlight. Storing structured JSON (not HTML) avoids sanitization/XSS headaches later. |
 | Backend / DB | Supabase (Postgres + Auth + Row Level Security) | Gives us a real relational database, auth, and authorization (RLS) without hand-rolling a backend server. The Supabase JS client can talk to Postgres directly from the browser because RLS — not application code — is the security boundary. This matches the "don't rely on frontend checks" requirement directly. |
 
-Explicitly **not** introduced yet: Zustand or Redux, Stripe, realtime
+Explicitly **not** introduced yet: Zustand or Redux, realtime
 collaboration, ORMs (Prisma etc.). Supabase's JS client plus React state is
 enough for the current phases; we add libraries when a phase's requirements
-actually demand them, not preemptively.
+actually demand them, not preemptively. Stripe was added in Phase 9 — see
+§3 and `docs/database.md` §6a.
 
 ## 3. High-level shape
 
@@ -62,9 +63,14 @@ actually demand them, not preemptively.
 Next.js's role here is mostly **routing and page shell** — the dashboard
 and board pages, the auth pages, layout/navigation. It is not acting as a
 traditional backend-for-frontend with its own API routes for CRUD, because
-Supabase + RLS lets the browser talk to Postgres safely. We'll introduce a
-Next.js server-side route only where it's genuinely needed later (e.g. a
-Stripe webhook, which must run server-side with a secret key).
+Supabase + RLS lets the browser talk to Postgres safely. Route Handlers
+exist only where something genuinely needs to run server-side: as of
+Phase 9, that's `app/api/stripe/checkout` and `.../portal` (each creates a
+Stripe Session using the secret key and `redirect()`s straight to it — no
+Stripe.js in the frontend, so no publishable key either) and
+`app/api/stripe/webhook` (verifies Stripe's signature on the **raw**
+request body and syncs `profiles.plan` — see `docs/database.md` §6a for
+why that write has to go through a `service_role` client instead of RLS).
 
 ## 4. Frontend architecture
 
@@ -85,6 +91,9 @@ this exists after Phase 0):
                          (only reachable signed-in — proxy.ts redirects
                          signed-out visitors to /login first, including
                          for URLs that don't exist)
+  /api/stripe            ✓ Phase 9 — the app's only Route Handlers:
+                         checkout/, portal/ (redirect-based, see §3),
+                         webhook/ (signature-verified plan sync)
 /components
   /canvas                React Flow wrapper, custom node/edge components,
                          NoteEditorModal.tsx (the note-editing surface —
@@ -106,6 +115,12 @@ this exists after Phase 0):
   /theme                 ✓ Phase 8 — theme-context.tsx: the ThemeProvider
                          and useTheme() hook backing ThemeToggle, plus the
                          inline anti-flash script injected in layout.tsx
+  admin.ts               ✓ Phase 9 — a service_role client, RLS-bypassing
+                         by design; only ever imported from the Stripe
+                         Route Handlers (see §3), never from anything a
+                         browser talks to directly
+  /stripe                ✓ Phase 9 — client.ts: the server-only Stripe SDK
+                         instance and the Pro plan's price id
 /hooks                   Reusable hooks (useBoardHistory, useSupabaseBoardSync, …)
 /types                   Shared TypeScript types (Node content, Board, Edge)
 /docs                    This document and friends
@@ -188,10 +203,9 @@ early.
 
 ## 7. Future scalability (designed for, not built now)
 
-- **Subscriptions**: the `profiles` table (see `database.md`) carries a
-  `plan` field now, defaulting to `'free'`. Adding Stripe later means
-  adding a webhook route and flipping this field — not restructuring the
-  schema or the board-limit check.
+- **Subscriptions**: ✓ built in Phase 9 — see §3 and `database.md` §6a.
+  The prediction here held: it was a webhook route and flipping `plan`,
+  not a schema restructure or a change to the board-limit trigger.
 - **Sharing / collaboration**: boards are owned by a single `user_id` now.
   A future `board_members` join table can be added without touching the
   `boards`/`nodes`/`edges` tables themselves.

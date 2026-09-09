@@ -44,14 +44,25 @@ This tracks phase status. Each phase is scoped deliberately narrow — see
       by an `<input>` invalidly nested inside a `<button>`, fixed by
       restructuring the board card's clickable area to a
       `div[role="button"]` with its own keyboard handling.
-- [ ] **Phase 9 — Billing.** Stripe Checkout + customer portal for
+- [x] **Phase 9 — Billing.** Stripe Checkout + customer portal for
       upgrading/downgrading; a webhook route (the app's first genuinely
       server-side endpoint — everything before this talks to Supabase
       directly from the browser) syncs `profiles.plan` on subscription
-      events. Makes self-service what's currently a manual
-      `update profiles set plan = 'pro'` — the Phase 7 trigger already
-      unlimits any non-`'free'` plan, so no schema change needed, just a
-      real way for `plan` to change.
+      events. Two `profiles` columns added (`stripe_customer_id`,
+      `stripe_subscription_id` — the join key back to Stripe; `plan`
+      itself already existed since Phase 5). The Dashboard's "Upgrade to
+      Pro"/"Manage billing" buttons are plain `<form method="POST">`s
+      targeting `/api/stripe/checkout` and `/api/stripe/portal` — each
+      Route Handler creates a Stripe Checkout/Portal Session and
+      `redirect()`s straight to Stripe's hosted URL, so no client-side
+      Stripe.js or publishable key is needed at all (redirect-based
+      Checkout only ever needs the secret key, server-side). Found while
+      building this, not assumed: the `profiles_lock_down_writes`
+      migration written back in Phase 7/8 had only ever been saved to
+      the repo, never actually applied to the live database — the plan
+      self-upgrade hole it closes was open the whole time. Applied
+      together with the new Stripe columns once billing gave a concrete
+      reason to revisit it.
 - [ ] **Phase 10 — Sharing.** A `board_members` join table (anticipated
       since Phase 0, see `architecture.md` §7) so a board can have
       collaborators, not just an owner; a share dialog with viewer/editor

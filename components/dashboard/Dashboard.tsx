@@ -182,6 +182,32 @@ export default function Dashboard() {
     };
   }, [supabase, retryToken]);
 
+  // Landing back here right after Checkout (`success_url` in the checkout
+  // route) — the redirect can beat Stripe's `checkout.session.completed`
+  // webhook to us, so `plan` may still read "free" for a second. Poll
+  // briefly rather than tell a paying user their upgrade didn't work.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("checkout") !== "success") return;
+    window.history.replaceState({}, "", window.location.pathname);
+
+    let cancelled = false;
+    let attempts = 0;
+    async function poll() {
+      if (cancelled) return;
+      attempts += 1;
+      const userPlan = await getUserPlan(supabase).catch(() => null);
+      if (userPlan === "pro") {
+        if (!cancelled) setPlan(userPlan);
+        return;
+      }
+      if (attempts < 5) setTimeout(poll, 1000);
+    }
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
   const retryLoad = useCallback(() => setRetryToken((token) => token + 1), []);
 
   const handleCreateBoard = useCallback(async () => {
@@ -290,6 +316,25 @@ export default function Dashboard() {
             >
               {isPro ? "Pro" : "Free"}
             </span>
+            {isPro ? (
+              <form action="/api/stripe/portal" method="POST">
+                <button
+                  type="submit"
+                  className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white blueprint:border-white/20 blueprint:bg-white/5 blueprint:text-white/70 blueprint:hover:border-white/40 blueprint:hover:text-white"
+                >
+                  Manage billing
+                </button>
+              </form>
+            ) : (
+              <form action="/api/stripe/checkout" method="POST">
+                <button
+                  type="submit"
+                  className="rounded-full bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
+                >
+                  Upgrade to Pro
+                </button>
+              </form>
+            )}
             <button
               type="button"
               onClick={handleLogout}
@@ -344,9 +389,19 @@ export default function Dashboard() {
           </div>
         )}
         {atLimit && !limitMessage && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
-            You&apos;ve reached the free plan limit of {FREE_PLAN_BOARD_LIMIT} boards. Delete one,
-            or upgrade to Pro, to create another.
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
+            <span>
+              You&apos;ve reached the free plan limit of {FREE_PLAN_BOARD_LIMIT} boards. Delete
+              one, or upgrade to Pro, to create another.
+            </span>
+            <form action="/api/stripe/checkout" method="POST">
+              <button
+                type="submit"
+                className="shrink-0 rounded-full bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
+              >
+                Upgrade to Pro
+              </button>
+            </form>
           </div>
         )}
 

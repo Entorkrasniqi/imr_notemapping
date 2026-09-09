@@ -32,7 +32,9 @@ free-plan limit trigger that §6 had described but deferred.
 | column | type | notes |
 |---|---|---|
 | `id` | uuid, PK | same value as `auth.users.id` (1:1) |
-| `plan` | text | `'free'` \| `'pro'`, default `'free'`. This is the seam for Stripe later — no schema change needed to add billing, just start setting this field from a webhook. |
+| `plan` | text | `'free'` \| `'pro'`, default `'free'`. Set from `app/api/stripe/webhook/route.ts` as of Phase 9 — see §6a. |
+| `stripe_customer_id` | text, unique, nullable | Phase 9. Set the first time a user starts Checkout; the join key the webhook uses to find which `profiles` row an incoming event is about. |
+| `stripe_subscription_id` | text, nullable | Phase 9. The active subscription backing `plan = 'pro'`, if any. |
 | `created_at` | timestamptz | default `now()` |
 
 Why add this table at all, when the brief's draft schema didn't have it?
@@ -219,6 +221,36 @@ brief, this must not be a frontend-only check — two layers:
    `{"code":"P0001","message":"Free plan is limited to 3 boards"}`, and
    the Supabase JS client surfaces that as a normal `PostgrestError` the
    application code catches (`BoardLimitError` in `boards.ts`).
+
+## 6a. Billing and the `profiles` write lockdown (Phase 9)
+
+`enforce_free_plan_board_limit()` only ever checks what `profiles.plan`
+*already says* — nothing in §6 stopped a signed-in user from changing that
+value themselves. Until Phase 9, `profiles_owner_update`'s `using`/
+`with check: auth.uid() = id` let any authenticated client run
+`supabase.from('profiles').update({ plan: 'pro' })` on their own row
+directly from the browser, silently defeating the free-plan limit — RLS
+policies restrict which *rows* a write can touch, not which *columns*, so
+"owner can update their own row" and "owner can grant themselves Pro" were
+the same policy. The `profiles_lock_down_writes` migration drops that
+policy and revokes `insert`/`update`/`delete` on `profiles` from `anon`
+and `authenticated` entirely — nothing in the app depended on writing to
+it as a normal user (the one-row-per-user insert is done by
+`handle_new_user()`, a `security definer` trigger that runs as its owner,
+not as `authenticated`).
+
+That makes `plan` (and the `stripe_customer_id`/`stripe_subscription_id`
+columns added alongside it) writable only through paths that bypass RLS
+outright: the Supabase Studio SQL editor, or a `service_role`-keyed
+client. `lib/supabase/admin.ts` is the only place in the app that holds
+such a client, and it's used from exactly two places — both server-only
+Route Handlers, never a Server Component or anything a browser talks to
+directly: `app/api/stripe/checkout/route.ts` (writes `stripe_customer_id`
+the first time a signed-in user starts a purchase, after verifying their
+identity with `getUser()`) and `app/api/stripe/webhook/route.ts` (writes
+`plan`/`stripe_subscription_id` when Stripe's signed event payload says a
+subscription changed — see `docs/architecture.md` §3 for why this route
+in particular has no session to check at all).
 
 ## 7. Primary keys, foreign keys, CRUD — quick reference
 
