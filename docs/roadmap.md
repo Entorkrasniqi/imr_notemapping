@@ -124,9 +124,51 @@ when new phases keep building on top of untested code.
   enforces green lint/types/tests before merge — it's only as reliable as
   remembering to run it locally. This is what turns "tests exist" into
   "tests actually get checked."
+- **Database migration discipline (the big one).** Phase 9's own finding
+  (`profiles_lock_down_writes` written to the repo but never applied to
+  production) is a textbook DevOps failure mode: migrations as code with
+  no enforced apply step. Put `supabase db push` (or equivalent) into the
+  deploy pipeline itself, so "migration exists in the repo" and
+  "migration is live" can never diverge again — not something a test
+  suite would ever catch.
+- **Environment & secrets.** Audit that `.env*` is actually gitignored,
+  define which secrets live where (`vercel env` per environment:
+  dev/preview/prod), and a rotation plan for the Stripe secret key and
+  Supabase `service_role` key specifically, since `admin.ts` already
+  flags that key as RLS-bypassing by design.
+- **Staging parity.** Right now it's one Supabase project. A second
+  project (or branched Postgres) for preview deploys means schema
+  changes and Stripe webhook changes get exercised against
+  non-production data before they touch real customers.
+- **Observability/alerting.** Not just "add Sentry" but specifically:
+  alert on Stripe webhook failures (a silent failure there desyncs
+  `profiles.plan` from what the customer is actually paying for), and
+  uptime/error-rate monitoring on `/board/[boardId]` and the dashboard as
+  the two routes real usage depends on.
+- **Backup/DR.** Confirm Supabase's automated backups are actually
+  enabled on the plan being used, and periodically test a real restore,
+  not just assume backups work.
+- **Rollback safety.** Vercel makes app rollback instant, but a
+  rolled-back app version can break against a newer DB schema if
+  migrations aren't backward-compatible. Worth adopting an
+  expand/contract pattern for schema changes once Phase 10+ starts
+  touching the schema more (`board_members`).
+- **Supply chain.** Dependabot/Renovate for patching, plus `npm audit` or
+  Snyk in CI, and secret-scanning (gitleaks) so a committed key gets
+  caught before merge, not after.
+- **Release consistency.** The desktop track's D6 (multi-platform CI
+  release pipeline) and the web app's deploy process are currently two
+  unrelated stories; worth one shared release/versioning convention
+  across both once desktop work starts.
 
-Start requiring both on new code from Phase 10 (Sharing) onward, without
-stopping to retrofit full coverage onto Phases 1-9 first.
+Start requiring tests and CI on new code from Phase 10 (Sharing) onward,
+without stopping to retrofit full coverage onto Phases 1-9 first. The
+rest of this list — migration pipeline, staging parity, observability,
+backups, supply chain — can be adopted incrementally, each one whenever
+it becomes the actual bottleneck rather than all at once; migration
+discipline and secrets hygiene are the two worth prioritizing earliest,
+since both are the kind of gap that stays invisible until it causes real
+damage.
 
 ## Git convention
 
