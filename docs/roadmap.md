@@ -100,6 +100,34 @@ largest, most self-contained efforts (history, mobile) to the end. This
 ordering is a proposal, not a commitment — revisit it before starting
 Phase 9 if priorities have shifted.
 
+## Ongoing: Maintainability
+
+Not a numbered phase — this isn't a one-time deliverable, it's a standing
+practice meant to run alongside every phase from here on. None of Phases
+1-9's application code shipped with it, and debt compounds fastest right
+when new phases keep building on top of untested code.
+
+- **Tests.** No test framework exists yet — `package.json` only wires up
+  `eslint`. Add Vitest (plus React Testing Library for component tests)
+  and start with the code most expensive to get wrong silently:
+  `lib/supabase/board-sync.ts` (`verifyBoardAccess` deliberately makes "no
+  such board" and "someone else's board" look identical — exactly the
+  kind of behavior a refactor could break without anyone noticing),
+  `app/api/stripe/webhook` (signature verification and the `profiles.plan`
+  sync), and the free-plan board-limit enforcement from Phase 7. Not full
+  coverage on day one — coverage grows alongside whichever phase is
+  currently being touched, plus a regression test any time a real bug
+  gets fixed (like the two found during Phase 8, or the unapplied RLS
+  migration found during Phase 9), so it can't silently come back.
+- **CI.** A GitHub Actions workflow running `npm run lint`, `tsc --noEmit`,
+  and the test suite above on every push and PR. Right now nothing
+  enforces green lint/types/tests before merge — it's only as reliable as
+  remembering to run it locally. This is what turns "tests exist" into
+  "tests actually get checked."
+
+Start requiring both on new code from Phase 10 (Sharing) onward, without
+stopping to retrofit full coverage onto Phases 1-9 first.
+
 ## Git convention
 
 One commit (or small commit series) per phase, e.g.:
