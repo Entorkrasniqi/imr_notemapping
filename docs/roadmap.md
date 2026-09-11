@@ -170,6 +170,66 @@ discipline and secrets hygiene are the two worth prioritizing earliest,
 since both are the kind of gap that stays invisible until it causes real
 damage.
 
+## Ongoing: Security (optional)
+
+Also not a numbered phase, and explicitly optional — none of this blocks
+Phase 10+, but it's the defensive-security counterpart to the
+maintainability list above, worth picking up incrementally rather than
+ignoring until something goes wrong.
+
+- **RLS policy testing.** Phase 6 verified RLS "with two real accounts,"
+  once, manually. Turn that into an automated suite that attempts
+  cross-user reads/writes against `boards`/`nodes`/`edges` directly (not
+  just through the app's own queries), run in CI on every migration that
+  touches those tables — especially before Phase 10, since "owner-only"
+  → "owner or member" is exactly the kind of policy change that quietly
+  introduces an authorization hole. This is the highest-priority item
+  here: RLS is the one security boundary the whole architecture depends
+  on.
+- **IDOR / direct API access.** `verifyBoardAccess`'s "no such board" vs
+  "someone else's board" ambiguity only helps if every code path goes
+  through it. Worth explicitly testing whether a signed-in user can query
+  another user's `nodes`/`edges` rows directly via the Supabase client,
+  in case a policy is missing or too permissive on those child tables
+  specifically.
+- **`service_role` key exposure.** `admin.ts` is already flagged as
+  RLS-bypassing and currently only touched by the Stripe Route Handlers.
+  Add a lint rule or CI check that fails the build if anything under
+  `/app`'s client components (or the browser bundle generally) ever
+  imports it — that key leaking is a full data-access bypass, not just
+  bad practice.
+- **Rich text XSS.** Tiptap storing JSON "avoids sanitization headaches"
+  per `architecture.md`, but only if that JSON is never rendered as raw
+  HTML. Verify nothing downstream uses `dangerouslySetInnerHTML` on note
+  content, and sanitize on render regardless (defense in depth, not just
+  format choice) — especially once the image extension is in play (watch
+  for `javascript:`/`data:` URLs in image `src`).
+- **Auth hardening.** Rate limiting on login/signup (nothing currently
+  stops credential stuffing or brute force), cookie flags on the
+  Supabase auth session (`Secure`, `HttpOnly`, `SameSite`), and CSRF
+  posture on the Stripe checkout/portal `<form method="POST">`s
+  specifically, since those are real money-moving actions.
+- **Security headers.** CSP, `X-Frame-Options`,
+  `Strict-Transport-Security`, `X-Content-Type-Options` aren't configured
+  anywhere yet; straightforward to add via `next.config`/`proxy.ts` and
+  meaningfully reduces clickjacking/injection blast radius for free.
+- **Data lifecycle / privacy.** Does deleting an account actually
+  cascade-delete the Supabase Auth user, their boards/nodes/edges, and
+  get reflected to Stripe (customer/subscription)? Untested today —
+  worth an explicit account-deletion audit before real users' financial
+  data is attached to this.
+- **Desktop track, later.** D7's auto-updater needs signed release
+  verification (an unverified update feed is a supply-chain attack
+  vector), and D8's custom URL scheme for magic-link deep-linking is a
+  known abuse vector (URL scheme hijacking) worth threat-modeling before
+  it ships.
+
+Pick these up opportunistically — RLS policy tests first, since it's the
+one item that protects every other phase's data, then whichever else
+becomes relevant as the phase currently in progress touches that area
+(auth hardening around Phase 10/11, security headers any time, desktop
+items only once the desktop track actually starts).
+
 ## Git convention
 
 One commit (or small commit series) per phase, e.g.:
