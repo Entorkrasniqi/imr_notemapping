@@ -1,0 +1,39 @@
+# The Mac app (ScriptumOS): unit tests plus a universal Release build, on
+# changes under macos/ only — macOS runners are the expensive ones. See
+# docs/DEVOPS.md §3.
+name: Mac app
+
+on:
+  push:
+    branches: [master]
+    paths: ["macos/**", ".github/workflows/mac.yml"]
+  pull_request:
+    paths: ["macos/**", ".github/workflows/mac.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests + universal build
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - name: Unit tests
+        run: xcodebuild test -project NoteMap.xcodeproj -scheme NoteMap -destination 'platform=macOS' -quiet
+      - name: Universal Release build (Intel + Apple Silicon)
+        run: |
+          xcodebuild build -project NoteMap.xcodeproj -scheme NoteMap -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build -quiet
+          archs=$(lipo -archs build/Build/Products/Release/ScriptumOS.app/Contents/MacOS/ScriptumOS)
+          echo "Architectures: $archs"
+          case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::Not a universal binary"; exit 1 ;; esac

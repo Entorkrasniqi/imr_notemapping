@@ -1,0 +1,32 @@
+#!/bin/sh
+# Runs before every commit — see docs/DEVOPS.md §2. Activated by `npm
+# install` (the "prepare" script points git at this folder). Bypass once
+# with `git commit --no-verify`; CI runs the same checks regardless.
+set -e
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+# 1. Files that hold secrets never get committed, even if force-added past
+#    .gitignore. Their `.example` templates are fine.
+secret_files=$(printf '%s\n' "$staged" | grep -E '(^|/)\.env($|\.)|(^|/)Supabase\.xcconfig$|\.p12$|\.pem$|\.key$' | grep -vE '\.example$' || true)
+if [ -n "$secret_files" ]; then
+  printf '✗ Refusing to commit files that hold secrets:\n%s\n' "$secret_files"
+  exit 1
+fi
+
+# 2. No keys or tokens anywhere in the staged changes.
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks git --pre-commit --staged --redact --no-banner --log-level warn .; then
+    echo "✗ gitleaks found what looks like a secret in the staged changes (details above)."
+    exit 1
+  fi
+else
+  echo "warning: gitleaks isn't installed, so staged changes weren't scanned for secrets (CI still scans). Install: brew install gitleaks"
+fi
+
+# 3. Lint the staged JavaScript/TypeScript.
+lint_files=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|jsx|mjs|mts)$' || true)
+if [ -n "$lint_files" ]; then
+  # shellcheck disable=SC2086 — one path per word is intended.
+  npx --no-install eslint --max-warnings=0 $lint_files
+fi

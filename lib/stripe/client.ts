@@ -1,3 +1,6 @@
+// Fails the build if this is ever imported into client code, rather than
+// relying on everyone remembering the rule below. See docs/SECURITY.md §4.
+import "server-only";
 import Stripe from "stripe";
 
 /**

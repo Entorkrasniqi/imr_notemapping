@@ -66,9 +66,9 @@ export default function SignupPage() {
           <input
             type="password"
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
-            placeholder="Password (6+ characters)"
+            placeholder="Password (8+ characters)"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:border-white/40 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white blueprint:placeholder:text-white/50 blueprint:focus:border-white"

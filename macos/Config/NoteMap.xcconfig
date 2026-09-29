@@ -1,0 +1,16 @@
+// Shared build settings for every configuration of the NoteMap project.
+//
+// The Supabase URL and anon key live in `Supabase.xcconfig` next to this
+// file — gitignored, the same way `.env.local` is for the web app. Copy
+// `Supabase.example.xcconfig` to `Supabase.xcconfig` and fill it in.
+// `#include?` (with the `?`) makes it optional, so a fresh clone still
+// builds; the app then shows a "not configured" screen instead of failing
+// to compile.
+#include? "Supabase.xcconfig"
+
+// Standard architectures on macOS are `arm64 x86_64`: Release builds
+// (`ONLY_ACTIVE_ARCH = NO` in the project) produce one universal binary
+// that runs natively on both Apple Silicon and Intel Macs. Debug builds
+// only compile the architecture of the machine you're building on, which
+// is Xcode's default and just keeps iteration fast.
+ARCHS = $(ARCHS_STANDARD)

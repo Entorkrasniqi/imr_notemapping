@@ -1,0 +1,22 @@
+// Copy this file to `Supabase.xcconfig` (same folder) and fill in the same
+// two values the web app reads from `.env.local`:
+//   NEXT_PUBLIC_SUPABASE_URL      -> SUPABASE_URL
+//   NEXT_PUBLIC_SUPABASE_ANON_KEY -> SUPABASE_ANON_KEY
+//
+// Only the public anon/publishable key belongs here — it ships inside the
+// app bundle exactly like it ships inside the web app's JavaScript, and
+// Row Level Security is what protects the data, not the key's secrecy.
+// Never put the service_role key or any Stripe secret in this file.
+//
+// xcconfig files treat `//` as the start of a comment, so a URL has to be
+// written with an empty `$()` between its two slashes:
+//   https:/$()/your-project-ref.supabase.co
+SUPABASE_URL = https:/$()/your-project-ref.supabase.co
+SUPABASE_ANON_KEY = your-anon-key
+
+// Where the web app is deployed. Billing (Stripe Checkout / the customer
+// portal) runs through the web app's server routes, which authenticate by
+// cookie — so the Mac app opens this URL in the browser for "Upgrade to
+// Pro" / "Manage billing" instead of calling those routes itself. Leave it
+// empty to hide the billing buttons.
+NOTEMAP_WEB_URL = http:/$()/localhost:3000

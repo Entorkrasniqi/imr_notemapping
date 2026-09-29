@@ -1,0 +1,111 @@
+# Builds a universal ScriptumOS.app and attaches it to a GitHub Release.
+# Triggered by pushing a tag like `mac-v1.0.0` (or run by hand).
+#
+# Signing and notarization happen only when the Developer ID secrets are
+# set; without them the release is an unsigned build, which macOS makes
+# testers approve in System Settings the first time. See docs/DEVOPS.md §6.
+name: Release Mac app
+
+on:
+  push:
+    tags: ["mac-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    environment: release
+    env:
+      HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12 != '' }}
+      ARCHIVE: build/ScriptumOS.xcarchive
+      APP: build/ScriptumOS.xcarchive/Products/Applications/ScriptumOS.app
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure the Supabase connection
+        env:
+          SUPABASE_URL: ${{ secrets.MAC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.MAC_SUPABASE_ANON_KEY }}
+          WEB_URL: ${{ vars.MAC_WEB_URL }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Set the MAC_SUPABASE_URL and MAC_SUPABASE_ANON_KEY secrets — see docs/DEVOPS.md §7"; exit 1
+          fi
+          # xcconfig treats `//` as a comment — see Config/Supabase.example.xcconfig.
+          escape() { printf '%s' "$1" | sed 's#//#/$()/#'; }
+          {
+            echo "SUPABASE_URL = $(escape "$SUPABASE_URL")"
+            echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY"
+            echo "NOTEMAP_WEB_URL = $(escape "$WEB_URL")"
+          } > Config/Supabase.xcconfig
+
+      - name: Import the Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+      - name: Build a universal archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          signing=()
+          if [ "$HAS_SIGNING" = "true" ]; then
+            signing=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=Developer ID Application" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID"
+                     OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO)
+          fi
+          xcodebuild archive -project NoteMap.xcodeproj -scheme NoteMap -configuration Release \
+            -destination 'generic/platform=macOS' -archivePath "$ARCHIVE" -quiet "${signing[@]}"
+          archs=$(lipo -archs "$APP/Contents/MacOS/ScriptumOS")
+          echo "Architectures: $archs"
+          case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::Not a universal binary"; exit 1 ;; esac
+          codesign --verify --deep --strict "$APP"
+
+      - name: Notarize
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent "$APP" notarize.zip
+          xcrun notarytool submit notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+          spctl --assess --type execute --verbose "$APP"
+
+      - name: Package
+        run: ditto -c -k --keepParent "$APP" "ScriptumOS-${GITHUB_REF_NAME}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScriptumOS
+          path: macos/ScriptumOS-*.zip
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: macos/ScriptumOS-*.zip
+          generate_release_notes: true
+
+      - name: Remove the signing keychain
+        if: always() && env.HAS_SIGNING == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -1,0 +1,8 @@
+# Local Supabase config — same role as the web app's .env.local.
+Config/Supabase.xcconfig
+
+# Xcode per-user state and build output.
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/

@@ -1,3 +1,6 @@
+// Fails the build if this is ever imported into client code — this key
+// bypasses Row Level Security entirely. See docs/SECURITY.md §4.
+import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 /**

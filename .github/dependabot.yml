@@ -1,0 +1,18 @@
+# Weekly update pull requests for npm packages and the GitHub Actions the
+# workflows use — each one goes through CI like any other change. See
+# docs/DEVOPS.md §8.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

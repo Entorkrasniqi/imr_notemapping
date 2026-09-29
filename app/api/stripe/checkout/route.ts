@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isSameOrigin } from "@/lib/security/same-origin";
 import { stripe, STRIPE_PRO_PRICE_ID } from "@/lib/stripe/client";
 
 /**
@@ -16,6 +17,10 @@ import { stripe, STRIPE_PRO_PRICE_ID } from "@/lib/stripe/client";
  * `proxy.ts`'s own comment on this), not just whatever the cookie claims.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return new Response("Cross-site request refused", { status: 403 });
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

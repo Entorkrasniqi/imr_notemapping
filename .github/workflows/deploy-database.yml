@@ -1,0 +1,59 @@
+# Applies new migrations to the production database when they land on
+# master — so "the migration is in the repo" and "the migration is live"
+# can't drift apart again (see docs/roadmap.md, Phase 9). The same
+# security tests as CI run first; the deploy job waits for approval if the
+# `production` environment has required reviewers. See docs/DEVOPS.md §5.
+name: Deploy database
+
+on:
+  push:
+    branches: [master]
+    paths: ["supabase/migrations/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-database
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Migrations + RLS security tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase db start
+      - run: sh scripts/test-db.sh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+  deploy:
+    name: Apply migrations to production
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check configuration
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "$(printenv "$name")" ]; then echo "::error::Missing secret $name — see docs/DEVOPS.md §7"; exit 1; fi
+          done
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Migrations that will be applied
+        run: supabase db push --dry-run
+      - run: supabase db push --yes

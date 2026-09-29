@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider, THEME_INIT_SCRIPT } from "@/lib/theme/theme-context";
@@ -18,7 +19,13 @@ export const metadata: Metadata = {
   description: "Infinite canvas mind-mapping and rich-text notes.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Set by proxy.ts for this request — the inline theme script below has to
+  // carry it, or the Content-Security-Policy blocks it (see
+  // lib/security/headers.ts). Reading request headers also makes every
+  // page render per request, which a per-request nonce requires anyway.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -36,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             from localStorage immediately so a returning dark/blueprint
             user never sees a flash of the light theme first. See
             THEME_INIT_SCRIPT's own comment in theme-context.tsx. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="h-full">
         <ThemeProvider>{children}</ThemeProvider>

@@ -102,6 +102,12 @@ Phase 9 if priorities have shifted.
 
 ## Ongoing: Maintainability
 
+> **Status (2026-09-29):** tests (Vitest, database security tests, smoke
+> test, Mac XCTest), CI, git hooks, the migration deploy pipeline, secrets
+> hygiene (gitleaks in hooks and CI), and Dependabot are in place — see
+> `DEVOPS.md`. Still open: staging parity, observability/alerting, and a
+> tested backup restore (`DEVOPS.md` §9).
+
 Not a numbered phase — this isn't a one-time deliverable, it's a standing
 practice meant to run alongside every phase from here on. None of Phases
 1-9's application code shipped with it, and debt compounds fastest right
@@ -171,6 +177,14 @@ since both are the kind of gap that stays invisible until it causes real
 damage.
 
 ## Ongoing: Security (optional)
+
+> **Status (2026-09-29):** RLS policy tests, IDOR/direct-access tests,
+> the `server-only` guard on the service-role key, security headers with a
+> nonce-based CSP, and CSRF hardening on the billing routes are done, along
+> with fixes for issues found on the way (the Stripe webhook was being
+> redirected to `/login`; edges could reference other users' notes) — see
+> `SECURITY.md` §6. Still open: auth rate-limit review, the account-deletion
+> audit, and the items in `SECURITY.md` §9.
 
 Also not a numbered phase, and explicitly optional — none of this blocks
 Phase 10+, but it's the defensive-security counterpart to the
