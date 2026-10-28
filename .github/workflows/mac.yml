@@ -26,7 +26,7 @@ jobs:
       run:
         working-directory: macos
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: xcodebuild -version
       - name: Unit tests
         run: xcodebuild test -project NoteMap.xcodeproj -scheme NoteMap -destination 'platform=macOS' -quiet
