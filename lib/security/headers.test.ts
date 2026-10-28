@@ -44,6 +44,10 @@ describe("buildContentSecurityPolicy", () => {
     ]);
   });
 
+  it("lets the PDF reader start its worker, from our own origin only", () => {
+    expect(production.get("worker-src")).toEqual(["'self'", "blob:"]);
+  });
+
   it("only talks to our own origin and the Supabase project", () => {
     expect(production.get("connect-src")).toEqual(["'self'", "https://ref.supabase.co", "wss://ref.supabase.co"]);
     expect(production.get("img-src")).toEqual(["'self'", "data:", "blob:"]);

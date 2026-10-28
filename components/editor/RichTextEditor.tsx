@@ -46,7 +46,7 @@ export default function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "prose-note text-base text-zinc-800 outline-none focus:outline-none dark:text-white/85 blueprint:text-white",
+          "prose-note text-[14px] text-(--zt-text) outline-none focus:outline-none",
       },
     },
     onUpdate: ({ editor: updatedEditor }) => {

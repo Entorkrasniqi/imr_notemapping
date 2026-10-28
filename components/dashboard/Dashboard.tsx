@@ -13,11 +13,13 @@ import {
   renameBoard,
   type BoardSummary,
 } from "@/lib/supabase/boards";
+import { LogoMark } from "@/components/brand/Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
+import { BoardIcon, PencilIcon, PlusIcon, SearchIcon, SortArrowIcon, TrashIcon } from "@/components/ui/icons";
 
 type LoadStatus = "loading" | "ready" | "error";
 
-/** "3 minutes ago", "2 days ago", etc. — good enough for a dashboard card. */
+/** "3 minutes ago", "2 days ago", etc. — good enough for a list column. */
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const diffSeconds = Math.round(diffMs / 1000);
@@ -37,105 +39,33 @@ function formatRelativeTime(iso: string): string {
   return rtf.format(0, "minute");
 }
 
-// A small, fixed set of complete class-name strings — Tailwind's compiler
-// scans source text statically, so building these from interpolated
-// pieces (e.g. `from-${hue}-100`) would silently produce no styles at
-// all. Picking one per board by hashing its id gives each card a
-// distinct, tasteful cover without any per-board configuration or
-// uploaded image.
-const COVER_PALETTE = [
-  "from-rose-100 via-rose-50 to-white",
-  "from-amber-100 via-amber-50 to-white",
-  "from-emerald-100 via-emerald-50 to-white",
-  "from-sky-100 via-sky-50 to-white",
-  "from-violet-100 via-violet-50 to-white",
-  "from-teal-100 via-teal-50 to-white",
-] as const;
+type SortKey = "name" | "notes" | "updated";
 
-function coverClassFor(boardId: string): string {
-  let hash = 0;
-  for (let i = 0; i < boardId.length; i++) {
-    hash = (hash * 31 + boardId.charCodeAt(i)) >>> 0;
-  }
-  return COVER_PALETTE[hash % COVER_PALETTE.length];
-}
-
-function PlusIcon() {
+/** A sortable column heading, with Zotero's small solid arrow on the sorted one. */
+function ColumnHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: "asc" | "desc" };
+  onSort: (key: SortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
   return (
-    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden>
-      <path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3 shrink-0" aria-hidden>
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth={1.3} />
-      <path d="M8 4.8V8l2.2 1.3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function NotesIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3 shrink-0" aria-hidden>
-      <rect x="3" y="2.5" width="10" height="11" rx="1.5" stroke="currentColor" strokeWidth={1.3} />
-      <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden>
-      <path
-        d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.5 12.1l-2.8.7.7-2.8Z"
-        stroke="currentColor"
-        strokeWidth={1.2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden>
-      <path
-        d="M3.5 4.5h9M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5v8a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-8"
-        stroke="currentColor"
-        strokeWidth={1.3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** The abstract two-node mark used as NoteMap's logo throughout the app. */
-function LogoMark() {
-  return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-zinc-800 to-zinc-950 shadow-[0_1px_2px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.08)]">
-      <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4">
-        <circle cx="4.5" cy="4.5" r="2" fill="white" fillOpacity={0.95} />
-        <circle cx="11.5" cy="11.5" r="2" fill="white" fillOpacity={0.95} />
-        <path d="M6 6l4 4" stroke="white" strokeOpacity={0.6} strokeWidth={1.2} />
-      </svg>
-    </div>
-  );
-}
-
-function BoardCardSkeleton() {
-  return (
-    <div className="animate-pulse overflow-hidden rounded-2xl border border-zinc-200/70 bg-white dark:border-white/10 dark:bg-white/5 blueprint:border-white/20 blueprint:bg-white/5">
-      <div className="h-20 bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
-      <div className="flex flex-col gap-2 p-4">
-        <div className="h-3.5 w-2/3 rounded-full bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
-        <div className="h-2.5 w-1/2 rounded-full bg-zinc-100 dark:bg-white/10 blueprint:bg-white/10" />
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      aria-label={`Sort by ${label}`}
+      className={`flex items-center gap-1 text-left outline-offset-[-2px] hover:bg-(--zt-hover) focus-visible:outline-2 focus-visible:outline-(--zt-accent) ${className}`}
+    >
+      <span className={active ? "font-semibold text-(--zt-text)" : ""}>{label}</span>
+      {active && <SortArrowIcon direction={sort.dir} />}
+    </button>
   );
 }
 
@@ -152,9 +82,11 @@ export default function Dashboard() {
   // same retry mechanism as useSupabaseBoardSync's own load effect.
   const [retryToken, setRetryToken] = useState(0);
 
-  // Double-click-to-rename, same interaction pattern as the canvas notes.
+  // Renaming happens in place in the list (pencil button, then Enter).
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "updated", dir: "desc" });
 
   useEffect(() => {
     let cancelled = false;
@@ -290,305 +222,259 @@ export default function Dashboard() {
   // is on the free plan.
   const isPro = plan !== "free";
   const atLimit = !isPro && boards.length >= FREE_PLAN_BOARD_LIMIT;
-  const usageFraction = Math.min(boards.length / FREE_PLAN_BOARD_LIMIT, 1);
+
+  const visibleBoards = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const matching = needle ? boards.filter((board) => board.name.toLowerCase().includes(needle)) : boards;
+    const sign = sort.dir === "asc" ? 1 : -1;
+    return [...matching].sort((a, b) => {
+      if (sort.key === "name") return sign * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      if (sort.key === "notes") return sign * (a.noteCount - b.noteCount);
+      return sign * (a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0);
+    });
+  }, [boards, query, sort]);
+  const toggleSort = (key: SortKey) =>
+    setSort((current) => (current.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "updated" ? "desc" : "asc" }));
 
   return (
-    <div className="blueprint-grid min-h-screen bg-[radial-gradient(circle_at_top,_#fafafa,_#f4f4f5_60%)] dark:bg-[radial-gradient(circle_at_top,_#18181b,_#09090b_60%)] blueprint:bg-background">
-      <header className="sticky top-0 z-10 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40 blueprint:border-white/15 blueprint:bg-[#0f3057]/70">
-        {/* `flex-wrap` — confirmed necessary by testing at 380px width,
-            where the theme toggle, plan badge, and "Log out" crowded
-            into an almost-unreadable single row otherwise. */}
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-6 py-4 sm:px-8">
-          <div className="flex items-center gap-2.5">
-            <LogoMark />
-            <span className="text-[15px] font-semibold tracking-tight text-zinc-900 dark:text-white blueprint:text-white">
-              NoteMap
+    <div className="zt flex h-screen min-h-0 flex-col bg-(--zt-window)">
+      {/* The title bar: the product on the left, account and appearance on the
+          right — one row, like the top of a desktop app's window. */}
+      <header className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-(--zt-border) bg-(--zt-chrome-2) px-3 py-1">
+        <div className="flex items-center gap-2">
+          <LogoMark size={20} />
+          <span className="text-[14px] font-semibold">NoteMap</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ThemeToggle />
+          <span className="hidden text-[12px] text-(--zt-dim) sm:inline">{isPro ? "Pro plan" : "Free plan"}</span>
+          {isPro ? (
+            <form action="/api/stripe/portal" method="POST">
+              <button type="submit" className="zt-btn">
+                Manage billing
+              </button>
+            </form>
+          ) : (
+            <form action="/api/stripe/checkout" method="POST">
+              <button type="submit" className="zt-btn zt-btn-primary">
+                Upgrade to Pro
+              </button>
+            </form>
+          )}
+          <button type="button" onClick={handleLogout} className="zt-btn">
+            Log out
+          </button>
+        </div>
+      </header>
+
+      <div className="zt-toolbar shrink-0 gap-1.5">
+        <button
+          type="button"
+          onClick={handleCreateBoard}
+          disabled={isCreating || atLimit || status !== "ready"}
+          title={atLimit ? `Free plan is limited to ${FREE_PLAN_BOARD_LIMIT} boards` : undefined}
+          className="zt-btn"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          {isCreating ? "Creating…" : "Create board"}
+        </button>
+        <span className="flex-1" />
+        <div className="relative w-full max-w-56">
+          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--zt-dim)" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => event.key === "Escape" && setQuery("")}
+            placeholder="Search boards"
+            aria-label="Search boards"
+            autoComplete="off"
+            className="zt-field pl-7 [&::-webkit-search-cancel-button]:hidden"
+          />
+        </div>
+      </div>
+
+      {(limitMessage || atLimit) && (
+        <div className="shrink-0 border-b border-(--zt-border) bg-(--zt-window) px-3 py-2">
+          <div className="zt-banner flex-wrap justify-between">
+            <span>
+              {limitMessage ??
+                `You've reached the free plan limit of ${FREE_PLAN_BOARD_LIMIT} boards. Delete one, or upgrade to Pro, to create another.`}
             </span>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <ThemeToggle />
-            <span
-              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase ${
-                isPro
-                  ? "bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:from-amber-500/20 dark:to-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30 blueprint:from-amber-400/20 blueprint:to-amber-400/10 blueprint:text-amber-200 blueprint:ring-amber-300/30"
-                  : "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-200 dark:bg-white/5 dark:text-white/50 dark:ring-white/10 blueprint:bg-white/10 blueprint:text-white/60 blueprint:ring-white/20"
-              }`}
-            >
-              {isPro ? "Pro" : "Free"}
-            </span>
-            {isPro ? (
-              <form action="/api/stripe/portal" method="POST">
-                <button
-                  type="submit"
-                  className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white blueprint:border-white/20 blueprint:bg-white/5 blueprint:text-white/70 blueprint:hover:border-white/40 blueprint:hover:text-white"
-                >
-                  Manage billing
-                </button>
-              </form>
-            ) : (
+            {!limitMessage && (
               <form action="/api/stripe/checkout" method="POST">
-                <button
-                  type="submit"
-                  className="rounded-full bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
-                >
+                <button type="submit" className="zt-btn zt-btn-primary">
                   Upgrade to Pro
                 </button>
               </form>
             )}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white blueprint:border-white/20 blueprint:bg-white/5 blueprint:text-white/70 blueprint:hover:border-white/40 blueprint:hover:text-white"
-            >
-              Log out
-            </button>
           </div>
         </div>
-      </header>
+      )}
 
-      <main className="mx-auto max-w-5xl px-6 py-12 sm:px-8">
-        <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-[28px] font-semibold tracking-tight text-zinc-900 dark:text-white blueprint:font-mono blueprint:text-white">
-              Your boards
-            </h1>
-            <p className="mt-1.5 text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
-              {isPro
-                ? "Unlimited boards on the Pro plan."
-                : `${boards.length} of ${FREE_PLAN_BOARD_LIMIT} boards used on the free plan.`}
-            </p>
-            {!isPro && (
-              <div className="mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-zinc-200/70 dark:bg-white/10 blueprint:bg-white/15">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    atLimit
-                      ? "bg-amber-500"
-                      : "bg-zinc-800 dark:bg-white blueprint:bg-white"
-                  }`}
-                  style={{ width: `${usageFraction * 100}%` }}
-                />
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCreateBoard}
-            disabled={isCreating || atLimit || status !== "ready"}
-            title={atLimit ? `Free plan is limited to ${FREE_PLAN_BOARD_LIMIT} boards` : undefined}
-            className="inline-flex items-center gap-1.5 self-start rounded-full bg-gradient-to-b from-zinc-800 to-zinc-950 px-4 py-2.5 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.2),0_8px_20px_-8px_rgba(0,0,0,0.35)] transition-all duration-150 hover:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_10px_24px_-6px_rgba(0,0,0,0.4)] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:brightness-100 dark:from-white dark:to-zinc-200 dark:text-zinc-900 blueprint:border blueprint:border-white/40 blueprint:from-transparent blueprint:to-transparent blueprint:text-white blueprint:shadow-none blueprint:hover:bg-white/10 blueprint:hover:brightness-100"
-          >
-            <PlusIcon />
-            {isCreating ? "Creating…" : "Create board"}
-          </button>
-        </div>
-
-        {limitMessage && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
-            {limitMessage}
-          </div>
-        )}
-        {atLimit && !limitMessage && (
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 blueprint:border-white/30 blueprint:bg-white/10 blueprint:text-white">
-            <span>
-              You&apos;ve reached the free plan limit of {FREE_PLAN_BOARD_LIMIT} boards. Delete
-              one, or upgrade to Pro, to create another.
-            </span>
-            <form action="/api/stripe/checkout" method="POST">
-              <button
-                type="submit"
-                className="shrink-0 rounded-full bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
-              >
-                Upgrade to Pro
-              </button>
-            </form>
-          </div>
-        )}
-
-        {status === "loading" && (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2].map((i) => (
-              <li key={i}>
-                <BoardCardSkeleton />
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {status === "error" && (
-          <div className="flex flex-col items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 blueprint:border-white/20 blueprint:bg-white/5">
-            <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
-              Couldn&apos;t reach the database.
-            </p>
-            <button
-              type="button"
-              onClick={retryLoad}
-              className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-
-        {status === "ready" && boards.length === 0 && (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-white/60 px-6 py-16 text-center dark:border-white/15 dark:bg-white/5 blueprint:border-white/30 blueprint:bg-white/5">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-white/10 dark:text-white/50 blueprint:bg-white/10 blueprint:text-white/70">
-              <PlusIcon />
-            </div>
-            <p className="text-sm font-medium text-zinc-700 dark:text-white/80 blueprint:text-white">
-              No boards yet
-            </p>
-            <p className="max-w-xs text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
-              Create your first board to start mapping out notes and ideas on an infinite canvas.
-            </p>
-          </div>
-        )}
-
+      <main className="flex min-h-0 flex-1 flex-col bg-(--zt-list)">
         {status === "ready" && boards.length > 0 && (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {boards.map((board) => (
-              <li
-                key={board.id}
-                data-board-id={board.id}
-                className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.18)] dark:border-white/10 dark:bg-zinc-900 dark:shadow-none dark:hover:border-white/20 dark:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.6)] blueprint:border-white/20 blueprint:bg-white/[0.06] blueprint:shadow-none blueprint:hover:border-white/40 blueprint:hover:shadow-[0_16px_32px_-16px_rgba(0,0,0,0.4)]"
-              >
-                {/* A `div[role="button"]`, not a real `<button>` — on
-                    purpose, and only after a real bug proved why. A
-                    native `<button>` gives free Enter/Space keyboard
-                    activation, but that's specifically tied to whichever
-                    element the browser considers "the button" for
-                    activation purposes, and having the rename `<input>`
-                    nested inside it (invalid HTML content-model-wise, but
-                    something browsers still render) meant typing a plain
-                    space while renaming — i.e. any board name with a
-                    space in it — was silently activating the *button's*
-                    keyup-on-Space handling and navigating away mid-edit,
-                    same as Enter did. `role="button"` gives assistive
-                    tech the right semantics without any of that native
-                    content-model baggage, at the cost of having to wire
-                    up Enter/Space ourselves below. */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleOpenBoard(board.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      handleOpenBoard(board.id);
-                    }
-                  }}
-                  className="flex w-full cursor-pointer flex-col items-start text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-white blueprint:focus-visible:outline-white"
-                >
-                  {/* Two stacked layers, not one element with two `bg-*`
-                      utilities — both `bg-gradient-to-br` and an
-                      arbitrary `bg-[radial-gradient(...)]` compile to the
-                      same `background-image` property, so combining them
-                      on one element makes the second silently replace the
-                      first instead of layering over it. */}
-                  <div className={`relative h-20 w-full overflow-hidden bg-gradient-to-br ${coverClassFor(board.id)}`}>
-                    <div className="absolute inset-0 bg-[radial-gradient(circle,_rgba(0,0,0,0.06)_1px,_transparent_1px)] bg-[length:14px_14px]" />
-                  </div>
-                  <div className="flex w-full flex-col gap-1.5 p-4">
-                    {editingBoardId === board.id ? (
-                      <input
-                        autoFocus
-                        value={editingValue}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => setEditingValue(event.target.value)}
-                        onBlur={handleCommitRename}
-                        onKeyDown={(event) => {
-                          // Stops every keystroke here from bubbling up
-                          // to the card's own `onKeyDown` (which treats
-                          // Enter/Space as "open this board" — see the
-                          // comment on that wrapper for the real bug that
-                          // made this necessary: a space bar keystroke
-                          // typed into a *nested* interactive element
-                          // used to reach a native `<button>` ancestor's
-                          // own activation handling before this was
-                          // switched to a plain `div[role="button"]`
-                          // with keydown handling we fully control).
-                          event.stopPropagation();
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            handleCommitRename();
-                          }
-                          if (event.key === "Escape") {
-                            setEditingBoardId(null);
-                          }
-                        }}
-                        className="w-full rounded-md border border-zinc-300 bg-white px-1.5 py-0.5 text-[15px] font-medium text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10 dark:border-white/20 dark:bg-zinc-800 dark:text-white dark:focus:border-white/50 dark:focus:ring-white/10 blueprint:border-white/30 blueprint:bg-[#0f3057] blueprint:text-white blueprint:focus:border-white blueprint:focus:ring-white/20"
-                      />
-                    ) : (
-                      // Both the single clicks that make up a double-click,
-                      // and the double-click itself, must stop propagation
-                      // here — the card's own onClick sits on its parent and
-                      // would otherwise navigate to the board on the first
-                      // of the two clicks, before the second click ever
-                      // produces a dblclick event to rename it.
-                      <span
-                        onClick={(event) => event.stopPropagation()}
-                        onDoubleClick={(event) => {
-                          event.stopPropagation();
-                          handleStartRename(board);
-                        }}
-                        title="Double-click to rename"
-                        className="truncate text-[15px] font-medium tracking-tight text-zinc-900 dark:text-white blueprint:text-white"
-                      >
-                        {board.name}
-                      </span>
-                    )}
-                    <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-white/40 blueprint:text-white/60">
-                      <span className="flex items-center gap-1">
-                        <ClockIcon />
-                        {formatRelativeTime(board.updatedAt)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <NotesIcon />
-                        {board.noteCount} {board.noteCount === 1 ? "note" : "notes"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Both action buttons stay hidden until hovered *or*
-                    keyboard-focused — `group-focus-within` (not just
-                    `group-hover`) on the wrapper below means tabbing to
-                    either button makes the whole pair visible, not just
-                    the one that happens to be focused. Without that, a
-                    keyboard user tabbing here would land on a button
-                    they can't see, which defeats the point of it being
-                    reachable at all. This pair is also what makes
-                    renaming possible without a mouse in the first place:
-                    the double-click-to-rename on the name itself (below)
-                    has no keyboard equivalent. */}
-                <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleStartRename(board);
-                    }}
-                    title="Rename board"
-                    aria-label={`Rename "${board.name}"`}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:bg-black/50 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
-                  >
-                    <PencilIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBoard(board)}
-                    title="Delete board"
-                    aria-label={`Delete "${board.name}"`}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-400 shadow-sm backdrop-blur transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-black/50 dark:text-white/50 dark:hover:bg-red-500/20 dark:hover:text-red-400 blueprint:bg-black/30 blueprint:text-white/60 blueprint:hover:bg-red-500/20 blueprint:hover:text-red-300"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="flex h-6 shrink-0 items-stretch border-b border-(--zt-border) bg-(--zt-chrome) text-[12px] text-(--zt-dim)">
+            <ColumnHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} className="flex-1 pl-9" />
+            <ColumnHeader label="Notes" sortKey="notes" sort={sort} onSort={toggleSort} className="hidden w-20 justify-end border-l border-(--zt-border) pr-3 sm:flex" />
+            <ColumnHeader label="Last updated" sortKey="updated" sort={sort} onSort={toggleSort} className="w-36 justify-end border-l border-(--zt-border) pr-3" />
+            <span className="w-16 shrink-0" aria-hidden />
+          </div>
         )}
+
+        <div className="zt-scroll min-h-0 flex-1 overflow-y-auto">
+          {status === "loading" && (
+            <ul aria-label="Loading boards" className="animate-pulse">
+              {[0, 1, 2].map((i) => (
+                <li key={i} className="flex h-7 items-center gap-2 px-3 odd:bg-(--zt-list) even:bg-(--zt-stripe)">
+                  <span className="h-3.5 w-3.5 rounded-sm bg-(--zt-hover)" />
+                  <span className="h-2.5 w-40 rounded-sm bg-(--zt-hover)" />
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {status === "error" && (
+            <div className="flex flex-col items-start gap-2 px-4 py-4 text-(--zt-dim)">
+              <p>Couldn&apos;t reach the database.</p>
+              <button type="button" onClick={retryLoad} className="zt-btn">
+                Try again
+              </button>
+            </div>
+          )}
+
+          {status === "ready" && boards.length === 0 && (
+            <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+              <BoardIcon className="h-8 w-8 text-(--zt-dim) opacity-60" />
+              <p className="text-[14px] font-semibold">No boards yet</p>
+              <p className="max-w-xs text-(--zt-dim)">
+                Create your first board to start mapping out notes and ideas on an infinite canvas.
+              </p>
+              <button type="button" onClick={handleCreateBoard} disabled={isCreating || atLimit} className="zt-btn zt-btn-primary mt-1">
+                <PlusIcon className="h-3.5 w-3.5" />
+                Create board
+              </button>
+            </div>
+          )}
+
+          {status === "ready" && boards.length > 0 && visibleBoards.length === 0 && (
+            <p className="px-4 py-4 text-center text-(--zt-dim)">No boards match “{query.trim()}”.</p>
+          )}
+
+          {status === "ready" && visibleBoards.length > 0 && (
+            <ul aria-label="Boards">
+              {visibleBoards.map((board) => (
+                <li
+                  key={board.id}
+                  data-board-id={board.id}
+                  className="group relative odd:bg-(--zt-list) even:bg-(--zt-stripe) hover:bg-(--zt-hover)"
+                >
+                  {/* A `div[role="button"]`, not a real `<button>` — on
+                      purpose, and only after a real bug proved why. A native
+                      `<button>` gives free Enter/Space activation, but with
+                      the rename `<input>` nested inside it (invalid HTML,
+                      though browsers still render it) typing a space while
+                      renaming — any board name with a space in it — was
+                      activating the *button's* keyup-on-Space handling and
+                      navigating away mid-edit, same as Enter did.
+                      `role="button"` gives assistive tech the right
+                      semantics without that native baggage, at the cost of
+                      wiring up Enter/Space ourselves below. */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenBoard(board.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleOpenBoard(board.id);
+                      }
+                    }}
+                    // Keyboard focus is the blue selection bar, as in Zotero.
+                    className="flex h-7 w-full cursor-default items-center outline-none focus-visible:bg-(--zt-select) focus-visible:text-(--zt-select-text)"
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2 pl-3 pr-2">
+                      <BoardIcon className="h-4 w-4 shrink-0 text-(--zt-accent) group-has-[:focus-visible]:text-inherit" />
+                      {editingBoardId === board.id ? (
+                        <input
+                          autoFocus
+                          aria-label={`Rename "${board.name}"`}
+                          value={editingValue}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => setEditingValue(event.target.value)}
+                          onBlur={handleCommitRename}
+                          onKeyDown={(event) => {
+                            // Stops every keystroke here bubbling up to the
+                            // row's own `onKeyDown` (Enter/Space = "open this
+                            // board") — see the comment on the wrapper.
+                            event.stopPropagation();
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              handleCommitRename();
+                            }
+                            if (event.key === "Escape") {
+                              setEditingBoardId(null);
+                            }
+                          }}
+                          className="zt-field h-5 min-w-0 flex-1 text-[13px] text-(--zt-text)"
+                        />
+                      ) : (
+                        <span className="truncate">{board.name}</span>
+                      )}
+                    </span>
+                    <span className="hidden w-20 shrink-0 pr-3 text-right tabular-nums text-(--zt-dim) group-has-[:focus-visible]:text-inherit sm:block">
+                      {board.noteCount}
+                    </span>
+                    <span className="w-36 shrink-0 pr-3 text-right text-(--zt-dim) group-has-[:focus-visible]:text-inherit">
+                      {formatRelativeTime(board.updatedAt)}
+                    </span>
+                    <span className="w-16 shrink-0" aria-hidden />
+                  </div>
+
+                  {/* Rename and delete stay out of sight (but present, for a
+                      screen reader) until the row is hovered or keyboard-focused,
+                      and are click-through until then so an unseen button can't
+                      catch a stray click. This pair is also what makes renaming
+                      possible without a mouse. */}
+                  <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-0.5 opacity-0 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleStartRename(board);
+                      }}
+                      title="Rename board"
+                      aria-label={`Rename "${board.name}"`}
+                      className="zt-tbtn h-5 min-w-5 px-0"
+                    >
+                      <PencilIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBoard(board)}
+                      title="Delete board"
+                      aria-label={`Delete "${board.name}"`}
+                      className="zt-tbtn h-5 min-w-5 px-0 hover:text-(--zt-danger)"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </main>
+
+      <footer className="flex h-6 shrink-0 items-center gap-1 border-t border-(--zt-border) bg-(--zt-chrome) px-3 text-[12px] text-(--zt-dim)">
+        {status === "ready" && (
+          <span className={atLimit ? "font-medium text-(--zt-warn-text)" : ""}>
+            {isPro
+              ? `${boards.length} ${boards.length === 1 ? "board" : "boards"} · Unlimited boards on the Pro plan`
+              : `${boards.length} of ${FREE_PLAN_BOARD_LIMIT} boards used on the free plan`}
+          </span>
+        )}
+      </footer>
     </div>
   );
 }

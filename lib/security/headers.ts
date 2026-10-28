@@ -38,6 +38,9 @@ const STRIPE_FORM_TARGETS = ["https://checkout.stripe.com", "https://billing.str
  *
  * Images: `data:`/`blob:` for images embedded in notes; remote images are
  * deliberately not allowed (no tracking pixels via pasted note content).
+ *
+ * Workers: `'self'` and `blob:` only, for the PDF reader — see the comment
+ * on `worker-src` below.
  */
 export function buildContentSecurityPolicy({ nonce, isDev, supabaseUrl }: CspOptions): string {
   const connectSrc = ["'self'"];
@@ -54,6 +57,12 @@ export function buildContentSecurityPolicy({ nonce, isDev, supabaseUrl }: CspOpt
     "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'"],
     "connect-src": connectSrc,
+    // The PDF reader (pdf.js) parses files in a Web Worker. Workers fall
+    // back to `script-src`, where `'strict-dynamic'` makes `'self'` mean
+    // nothing, so without this the worker is refused. It lets the page
+    // start workers from its own origin (or a blob: its own bundler made);
+    // a worker still can't load from anywhere else.
+    "worker-src": ["'self'", "blob:"],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],
     "form-action": ["'self'", ...STRIPE_FORM_TARGETS],

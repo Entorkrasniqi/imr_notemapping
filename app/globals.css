@@ -34,14 +34,21 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* The system UI font, as Zotero uses: San Francisco on a Mac, Segoe UI on
+     Windows. Nothing is downloaded, and it reads as a native tool rather
+     than a web page. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--zt-window);
+  color: var(--zt-text);
+  /* Zotero's own density: 13px, not the web's 16px. Components that need a
+     different size set it explicitly; nothing relies on rem scaling. */
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
 }
 
 /*
@@ -177,38 +184,469 @@ body {
 }
 
 /*
- * React Flow ships its own default light-theme chrome for Controls and
- * MiniMap (from @xyflow/react/dist/style.css, imported in Board.tsx) —
- * plain CSS overrides here, keyed off the same `data-theme` attribute,
- * are the only way to reach into it, since those elements aren't part of
- * this app's own component tree to hand Tailwind classes to directly.
+ * React Flow ships its own light-theme chrome for Controls and MiniMap
+ * (from @xyflow/react/dist/style.css, imported in Board.tsx). These rules
+ * restyle it with the same variables as everything else: flat, thin-bordered,
+ * square-cornered, like Zotero's own controls. They are scoped under
+ * `.react-flow` so they win over the library's stylesheet.
  */
-[data-theme="dark"] .react-flow__controls-button,
-[data-theme="blueprint"] .react-flow__controls-button {
-  background: rgba(255, 255, 255, 0.08);
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-  fill: #e4e4e7;
+.react-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--zt-border);
+  border-radius: 4px;
+  background: var(--zt-chrome);
+  box-shadow: none;
 }
-[data-theme="dark"] .react-flow__controls-button:hover,
-[data-theme="blueprint"] .react-flow__controls-button:hover {
-  background: rgba(255, 255, 255, 0.16);
+.react-flow .react-flow__controls-button {
+  width: 26px;
+  height: 26px;
+  border-bottom: 1px solid var(--zt-border);
+  background: var(--zt-chrome);
+  color: var(--zt-text);
+  fill: var(--zt-text);
 }
-[data-theme="dark"] .react-flow__attribution,
-[data-theme="blueprint"] .react-flow__attribution {
+.react-flow .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+.react-flow .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--zt-chrome) 90%, var(--zt-text));
+}
+.react-flow .react-flow__controls-button svg {
+  max-width: 13px;
+  max-height: 13px;
+}
+.react-flow .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--zt-border);
+  border-radius: 4px;
+  background: var(--zt-chrome);
+  box-shadow: none;
+}
+.react-flow .react-flow__attribution {
   background: transparent;
 }
-[data-theme="dark"] .react-flow__attribution a,
-[data-theme="blueprint"] .react-flow__attribution a {
-  color: rgba(255, 255, 255, 0.35);
+.react-flow .react-flow__attribution a {
+  color: var(--zt-dim);
 }
-/* The MiniMap panel's own background (as opposed to `maskColor`, which
-   only paints the "outside the current viewport" overlay on top of it)
-   comes from this class in React Flow's own stylesheet — plain color
-   props on the component have no way to reach it. */
-[data-theme="dark"] .react-flow__minimap,
-[data-theme="blueprint"] .react-flow__minimap {
-  background-color: rgba(255, 255, 255, 0.04);
+
+/*
+ * Shared controls. Flat, 26px high, 4px corners, a pale border and a soft
+ * grey hover — the buttons and fields Zotero's windows use — so every
+ * screen (dashboard, board, sign-in, note editor) draws them the same way
+ * from one definition, in all three themes.
+ */
+@layer components {
+  .zt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 12px;
+    border: 1px solid var(--zt-field-border);
+    border-radius: 4px;
+    background: var(--zt-field);
+    color: var(--zt-text);
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: default;
+    transition: background-color 0.08s;
+  }
+  .zt-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--zt-field) 92%, var(--zt-text));
+  }
+  .zt-btn:disabled {
+    opacity: 0.45;
+  }
+  .zt-btn:focus-visible,
+  .zt-field:focus-visible,
+  .zt-tbtn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--zt-accent) 55%, transparent);
+    outline-offset: 1px;
+  }
+  /* The one default action on a screen: the accent blue, as in a native dialog. */
+  .zt-btn-primary {
+    border-color: color-mix(in srgb, var(--zt-accent) 80%, black);
+    background: var(--zt-accent);
+    color: #ffffff;
+  }
+  [data-theme="blueprint"] .zt-btn-primary {
+    color: #06223f;
+  }
+  .zt-btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--zt-accent) 88%, black);
+  }
+  .zt-btn-danger {
+    color: var(--zt-danger);
+  }
+  /* A toolbar button: no border until hovered, like Zotero's toolbar icons. */
+  .zt-tbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 26px;
+    min-width: 26px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--zt-text);
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .zt-tbtn:hover:not(:disabled),
+  .zt-tbtn[aria-expanded="true"],
+  .zt-tbtn[aria-pressed="true"] {
+    background: var(--zt-hover);
+  }
+  .zt-tbtn:disabled {
+    opacity: 0.4;
+  }
+  .zt-field {
+    height: 26px;
+    width: 100%;
+    padding: 0 8px;
+    border: 1px solid var(--zt-field-border);
+    border-radius: 4px;
+    background: var(--zt-field);
+    color: var(--zt-text);
+    font-size: 13px;
+  }
+  .zt-field::placeholder {
+    color: var(--zt-dim);
+  }
+  .zt-field:focus {
+    border-color: var(--zt-accent);
+    outline: 2px solid color-mix(in srgb, var(--zt-accent) 35%, transparent);
+    outline-offset: -1px;
+  }
+  .zt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 36px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--zt-border);
+    background: var(--zt-chrome);
+  }
+  .zt-sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--zt-border);
+  }
+  .zt-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--zt-warn-border);
+    border-radius: 4px;
+    background: var(--zt-warn-bg);
+    color: var(--zt-warn-text);
+  }
+  .zt-link {
+    color: var(--zt-accent);
+    text-decoration: none;
+  }
+  .zt-link:hover {
+    text-decoration: underline;
+  }
 }
-[data-theme="blueprint"] .react-flow__minimap {
-  background-color: rgba(255, 255, 255, 0.06);
+
+/*
+ * The invisible text layer over each PDF page in the reader
+ * (components/files/PdfPage.tsx), which is what makes PDF text selectable
+ * and copyable. pdf.js writes one absolutely positioned span per run of
+ * text and expects these rules; they're the text-layer part of its own
+ * viewer stylesheet, kept here instead of importing the whole thing (a
+ * 6,000-line global sheet with generic class names like `.page`).
+ * `--total-scale-factor` is set on the layer by PdfPage.
+ */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  text-align: initial;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  color-scheme: only light;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-text-layer ::selection {
+  background: rgb(59 130 246 / 0.35);
+}
+
+/*
+ * Typography for documents shown in the reader (Word, EPUB, Markdown —
+ * components/files/). Written in `currentColor` and mixes of it, so the same
+ * rules read correctly in all three themes and on Word's white "paper".
+ */
+.doc-prose {
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.doc-prose > :first-child {
+  margin-top: 0;
+}
+
+.doc-prose h1,
+.doc-prose h2,
+.doc-prose h3,
+.doc-prose h4,
+.doc-prose h5,
+.doc-prose h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.4em 0 0.5em;
+}
+
+.doc-prose h1 {
+  font-size: 1.6em;
+}
+
+.doc-prose h2 {
+  font-size: 1.35em;
+}
+
+.doc-prose h3 {
+  font-size: 1.15em;
+}
+
+.doc-prose p {
+  margin: 0.7em 0;
+}
+
+.doc-prose ul,
+.doc-prose ol {
+  margin: 0.7em 0;
+  padding-left: 1.5rem;
+}
+
+.doc-prose ul {
+  list-style: disc;
+}
+
+.doc-prose ol {
+  list-style: decimal;
+}
+
+.doc-prose li {
+  margin: 0.2em 0;
+}
+
+.doc-prose blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+  opacity: 0.85;
+}
+
+.doc-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.doc-prose pre {
+  margin: 1em 0;
+  padding: 0.8em 1em;
+  overflow: auto;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.doc-prose pre code {
+  padding: 0;
+  background: none;
+}
+
+.doc-prose a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .doc-prose a,
+[data-theme="blueprint"] .doc-prose a {
+  color: #8ab8ff;
+}
+
+/* A link whose address was stripped as unsafe is left as plain text, not styled as clickable. */
+.doc-prose a:not([href]) {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Word's paper is white in every theme, so its links stay the light-theme blue. */
+.doc-prose.doc-paper a {
+  color: #2563eb;
+}
+
+.doc-prose table {
+  display: block;
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.doc-prose th,
+.doc-prose td {
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.doc-prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.doc-prose hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+
+/*
+ * The whole app is styled after Zotero 7's desktop app. The light theme uses
+ * colors measured from a Zotero screenshot: grey `#f0f0f0` side panes, a
+ * near-white `#f8f8f8` toolbar, a white list with `#f4f4f4` stripes, thin
+ * pale borders, grey labels, black text and a `#005eda` blue selection bar.
+ * Each theme sets these variables once; components use them (as
+ * `bg-(--zt-list)`, `border-(--zt-border)`, …) instead of carrying
+ * per-theme classes.
+ *
+ *   --zt-window   the page and side panes          --zt-chrome  toolbars, active tab
+ *   --zt-chrome-2 the tab strip                    --zt-list    lists, the reading surface
+ *   --zt-stripe   every other row                  --zt-border  hairlines
+ *   --zt-select   selection bar                    --zt-accent  links, primary buttons
+ *   --zt-hover    a hovered control                --zt-canvas  the mind-map canvas
+ */
+:root {
+  --zt-text: #111111;
+  --zt-dim: #676767;
+  --zt-window: #f0f0f0;
+  --zt-chrome: #f8f8f8;
+  --zt-chrome-2: #e9e9e9;
+  --zt-list: #ffffff;
+  --zt-stripe: #f4f4f4;
+  --zt-border: #dcdcdc;
+  --zt-hover: rgb(0 0 0 / 0.06);
+  --zt-select: #005eda;
+  --zt-select-text: #ffffff;
+  --zt-accent: #005eda;
+  --zt-danger: #c62828;
+  --zt-field: #ffffff;
+  --zt-field-border: #c4c4c4;
+  --zt-reader-bg: #e6e6e6;
+  --zt-canvas: #ffffff;
+  --zt-dots: #d4d4d4;
+  --zt-edge: #8c8c8c;
+  --zt-warn-bg: #fff6df;
+  --zt-warn-border: #ecd9a6;
+  --zt-warn-text: #6b4e00;
+}
+
+[data-theme="dark"] {
+  --zt-text: #e9e9e9;
+  --zt-dim: #9a9a9a;
+  --zt-window: #262626;
+  --zt-chrome: #2d2d2d;
+  --zt-chrome-2: #181818;
+  --zt-list: #1e1e1e;
+  --zt-stripe: #232323;
+  --zt-border: #3c3c3c;
+  --zt-hover: rgb(255 255 255 / 0.08);
+  --zt-select: #0b5fd9;
+  --zt-accent: #4a9bff;
+  --zt-danger: #ef6b6b;
+  --zt-field: #1b1b1b;
+  --zt-field-border: #4a4a4a;
+  --zt-reader-bg: #141414;
+  --zt-canvas: #1b1b1b;
+  --zt-dots: #3a3a3a;
+  --zt-edge: #7c7c7c;
+  --zt-warn-bg: #3a2f10;
+  --zt-warn-border: #5e4c1a;
+  --zt-warn-text: #f0d589;
+}
+
+[data-theme="blueprint"] {
+  --zt-text: #eaf4ff;
+  --zt-dim: rgb(234 244 255 / 0.62);
+  --zt-window: #0a2441;
+  --zt-chrome: #0f3057;
+  --zt-chrome-2: #0a2441;
+  --zt-list: #0b2748;
+  --zt-stripe: rgb(255 255 255 / 0.04);
+  --zt-border: rgb(255 255 255 / 0.2);
+  --zt-hover: rgb(255 255 255 / 0.12);
+  --zt-select: rgb(255 255 255 / 0.26);
+  --zt-accent: #6db3ff;
+  --zt-danger: #ff9b9b;
+  --zt-field: #0b2748;
+  --zt-field-border: rgb(255 255 255 / 0.32);
+  --zt-reader-bg: #0a2441;
+  --zt-canvas: #0f3057;
+  --zt-dots: rgb(255 255 255 / 0.25);
+  --zt-edge: rgb(255 255 255 / 0.55);
+  --zt-warn-bg: rgb(255 214 120 / 0.14);
+  --zt-warn-border: rgb(255 214 120 / 0.35);
+  --zt-warn-text: #ffe3a1;
+}
+
+.zt {
+  color: var(--zt-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A quiet scroll bar for the panel and reader surfaces. */
+.zt-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--zt-text) 28%, transparent) transparent;
 }

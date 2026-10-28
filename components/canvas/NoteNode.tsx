@@ -13,6 +13,7 @@ import type { NoteNode as NoteNodeType } from "@/types/canvas";
 import { getNoteExtensions } from "@/lib/editor/extensions";
 import { appendImageBlock, isEmptyContent, MAX_IMAGE_BYTES } from "@/lib/editor/content";
 import { useRecordBeforeChange } from "@/hooks/useBoardHistory";
+import { CloseIcon } from "@/components/ui/icons";
 
 // Forty fixed connection points around each note: all four corners, plus
 // nine evenly spaced points along each of the four edges. When you release
@@ -130,7 +131,7 @@ function NotePreview({ content }: { content: JSONContent | null }) {
   if (isEmptyContent(titleDoc)) {
     return (
       <p
-        className="flex h-full items-center justify-center p-2 text-center text-sm text-zinc-400 dark:text-white/30 blueprint:text-white/40"
+        className="flex h-full items-center justify-center p-2 text-center text-[13px] text-(--zt-dim)"
         title="Click to open"
       >
         Type something…
@@ -140,7 +141,7 @@ function NotePreview({ content }: { content: JSONContent | null }) {
 
   return (
     <div
-      className="tiptap prose-note relative flex h-full items-center justify-center overflow-hidden p-2 text-center text-sm text-zinc-800 dark:text-white/85 blueprint:text-white"
+      className="tiptap prose-note relative flex h-full items-center justify-center overflow-hidden p-2 text-center text-[13px] text-(--zt-text)"
       title="Click to open"
     >
       {/* The "···" hint below is deliberately taken out of normal flex
@@ -166,7 +167,7 @@ function NotePreview({ content }: { content: JSONContent | null }) {
         // it — just enough to tell someone clicking to open it isn't
         // opening an empty note.
         <p
-          className="pointer-events-none absolute inset-x-0 bottom-0 text-zinc-300 dark:text-white/20 blueprint:text-white/30"
+          className="pointer-events-none absolute inset-x-0 bottom-0 text-(--zt-dim) opacity-60"
           aria-hidden="true"
         >
           ···
@@ -340,8 +341,8 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           this sits right on top of the ring the invisible handles above
           already occupy. */}
       <div
-        className={`pointer-events-none absolute -inset-1.5 rounded-xl border-2 border-zinc-400 transition-opacity dark:border-white/50 blueprint:border-white/70 ${
-          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        className={`pointer-events-none absolute -inset-1.5 rounded-md border transition-opacity ${
+          selected ? "border-(--zt-accent) opacity-100" : "border-(--zt-field-border) opacity-0 group-hover:opacity-100"
         }`}
       />
 
@@ -356,7 +357,7 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           it isn't. */}
       <div
         className={`relative flex h-full w-full flex-col overflow-hidden outline-2 outline-offset-4 outline-dashed transition-[outline-color] ${
-          isDragOver ? "outline-blue-400 blueprint:outline-white" : "outline-transparent"
+          isDragOver ? "outline-(--zt-accent)" : "outline-transparent"
         }`}
       >
         {selected && (
@@ -367,11 +368,11 @@ function NoteNode({ id, data, selected }: NodeProps<NoteNodeType>) {
           <button
             type="button"
             onClick={handleDelete}
-            className="nodrag absolute right-1.5 top-1.5 z-10 rounded p-1 text-xs leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/80 blueprint:text-white/50 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+            className="zt-tbtn nodrag absolute right-1 top-1 z-10 h-5 min-w-5 px-0 text-(--zt-dim) hover:text-(--zt-text)"
             aria-label="Delete note"
             title="Delete note"
           >
-            ✕
+            <CloseIcon className="h-3 w-3" />
           </button>
         )}
 

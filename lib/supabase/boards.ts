@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { removeStoredFilesForBoard } from "@/lib/supabase/board-files";
 
 /**
  * The free plan's board cap, mirrored from the database trigger
@@ -124,11 +125,17 @@ export async function renameBoard(
   if (error) throw error;
 }
 
-/** `on delete cascade` on nodes/edges' `board_id` handles the rest. */
+/**
+ * `on delete cascade` on nodes/edges'/board_files' `board_id` handles the
+ * rows. The board's stored PDFs are the exception — Storage objects can't
+ * be reached from SQL — so they're cleared first (best effort; see
+ * `removeStoredFilesForBoard`).
+ */
 export async function deleteBoard(
   supabase: SupabaseClient,
   boardId: string,
 ): Promise<void> {
+  await removeStoredFilesForBoard(supabase, boardId);
   const { error } = await supabase.from("boards").delete().eq("id", boardId);
   if (error) throw error;
 }

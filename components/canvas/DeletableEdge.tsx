@@ -7,6 +7,7 @@ import {
   useReactFlow,
   type EdgeProps,
 } from "@xyflow/react";
+import { CloseIcon } from "@/components/ui/icons";
 
 /**
  * A connection between two notes.
@@ -40,7 +41,7 @@ export default function DeletableEdge({
     targetPosition,
   });
 
-  const strokeColor = selected ? "#3b82f6" : "#a1a1aa";
+  const strokeColor = selected ? "var(--zt-accent)" : "var(--zt-edge)";
 
   return (
     <>
@@ -67,13 +68,13 @@ export default function DeletableEdge({
             title="Delete connection"
             aria-label="Delete connection"
             onClick={() => deleteElements({ edges: [{ id }] })}
-            className="nodrag nopan absolute flex h-5 w-5 items-center justify-center rounded-full border border-zinc-200 bg-white text-[10px] leading-none text-zinc-500 shadow-sm hover:bg-zinc-100 hover:text-zinc-700"
+            className="zt-btn nodrag nopan absolute h-5 w-5 min-w-0 px-0"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "all",
             }}
           >
-            ✕
+            <CloseIcon className="h-3 w-3" />
           </button>
         </EdgeLabelRenderer>
       )}

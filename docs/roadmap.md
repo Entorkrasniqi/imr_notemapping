@@ -63,6 +63,53 @@ This tracks phase status. Each phase is scoped deliberately narrow — see
       self-upgrade hole it closes was open the whole time. Applied
       together with the new Stripe columns once billing gave a concrete
       reason to revisit it.
+- [x] **Board files & reader** *(between Phases 9 and 10, not numbered).*
+      A left sidebar on every board, styled after Zotero 7 (grey toolbar
+      with search, sortable Title/Added column header, striped list with a
+      blue selection bar, an Info section for the selected item, a status
+      line; open files get tabs in the reader, which keeps each tab's place),
+      holds up to ten items (add by picker or drag-and-drop, rename, remove): PDFs, images
+      (PNG/JPEG/WebP/GIF), text and Markdown, Word (.docx), PowerPoint
+      (.pptx), EPUB, and web links. Opening a file shows it in a reader pane
+      beside the board, so a note can be written and the map built while
+      reading; with a file open the note editor docks over the board pane
+      instead of covering the screen. Viewers: pdf.js (continuous scroll,
+      zoom/fit, page jump, selectable text); an image viewer with zoom;
+      text and rendered Markdown; Word as a reading view (headings, lists,
+      tables, links, pictures — not page layout); PowerPoint as a **text
+      outline** of each slide (title, bullets, tables, speaker notes — no
+      pictures or layout); EPUB chapter by chapter with its contents list
+      (the book's own styling is dropped). Links open in a new tab. New:
+      `board_files` table + private `board-files` bucket (two migrations,
+      see `database.md` §6b), a `worker-src 'self' blob:` CSP directive for
+      pdf.js's worker, and the dependencies `pdfjs-dist`, `mammoth`,
+      `jszip`, `dompurify`, `react-markdown` (each loaded only when a file
+      of that kind is opened). **Not live until the migrations are applied;
+      the second is needed for everything but PDFs.**
+      Not done: highlighting/sending a quote from a file into a note or map
+      node, a per-user storage quota (today the worst case is 10 × 20 MiB ×
+      the boards a user has), reordering, legacy `.doc`/`.ppt`, SVG,
+      password-protected PDFs. Likely limitations, **not tested** (only
+      simple generated files were): PDFs that don't embed their fonts or
+      need CJK character maps may show substitute fonts or missing text;
+      scanned PDFs using JBIG2 / JPEG 2000 images may not draw (WebAssembly,
+      and the CSP has no `'wasm-unsafe-eval'`); complex Word documents
+      (text boxes, tracked changes, equations) and real-world EPUBs with
+      unusual structure may render incompletely.
+- [x] **Interface restyle after Zotero** *(not numbered; done with the board files work).*
+      The whole app — dashboard, board, sign-in, 404/error, note editor —
+      follows Zotero 7's desktop look instead of the earlier rounded,
+      gradient style. The light theme uses colors measured from a Zotero
+      screenshot (grey `#f0f0f0` panes, near-white `#f8f8f8` toolbars, white
+      lists with `#f4f4f4` stripes, `#005eda` selection and accent, thin pale
+      borders); dark and blueprint map onto the same variables. The system
+      font at 13px replaces Geist (only Geist Mono is still loaded, for
+      code). Shared flat controls (`.zt-btn`, `.zt-field`, `.zt-toolbar`, …)
+      and one thin outline icon set live in `app/globals.css` and
+      `components/ui/`; the logo is a flat blue mark (`components/brand/`).
+      The dashboard is a sortable, searchable list of boards; the board has a
+      real toolbar across the top. Not changed: how notes look on the canvas
+      (plain text, no box — kept as it was), and every behavior.
 - [ ] **Phase 10 — Sharing.** A `board_members` join table (anticipated
       since Phase 0, see `architecture.md` §7) so a board can have
       collaborators, not just an owner; a share dialog with viewer/editor

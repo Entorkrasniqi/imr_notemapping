@@ -17,6 +17,13 @@ import type { NoteNode as NoteNodeType } from "@/types/canvas";
 
 type NoteEditorModalProps = {
   note: NoteNodeType;
+  /**
+   * When set, the editor fills this element (the board pane) instead of
+   * the whole screen. Used while a PDF is open beside the board, so the
+   * PDF stays visible and scrollable while a note is written. Read once,
+   * when the editor opens: moving it mid-edit would remount the editor.
+   */
+  dockIn?: HTMLElement | null;
 };
 
 /**
@@ -56,7 +63,7 @@ type NoteEditorModalProps = {
  * (see lib/editor/content.ts) split that one document apart for editing
  * and reassemble it on every change, in both directions.
  */
-export default function NoteEditorModal({ note }: NoteEditorModalProps) {
+export default function NoteEditorModal({ note, dockIn = null }: NoteEditorModalProps) {
   const { updateNodeData } = useReactFlow();
   const { activeEditor, setEditingNoteId } = useActiveEditor();
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +81,7 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
   const [initialBodyContent] = useState<JSONContent>(() => extractBodyContent(note.data.content));
   const [title, setTitle] = useState(() => extractTitleText(note.data.content));
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dockedIn] = useState(dockIn);
 
   const closeKeepingChanges = () => setEditingNoteId(null);
   const closeDiscardingChanges = () => {
@@ -193,7 +201,7 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
       // not a visual dimming effect. The canvas stays exactly as sharp
       // and normal-looking behind the modal as it is with nothing open.
       onClick={closeKeepingChanges}
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      className={`${dockedIn ? "absolute" : "fixed"} inset-0 z-50 flex items-center justify-center p-6`}
     >
       <div
         onClick={(event) => event.stopPropagation()}
@@ -204,9 +212,9 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
         // box that grows and shrinks with content — a short note just
         // leaves more empty space below it, instead of shrinking the
         // whole panel down around a single line of text.
-        className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10 blueprint:bg-[#0f3057] blueprint:ring-white/15"
+        className={`flex ${dockedIn ? "h-full max-h-[85vh]" : "h-[85vh]"} w-full max-w-3xl flex-col overflow-hidden rounded-md border border-(--zt-border) bg-(--zt-list) text-(--zt-text) shadow-[0_10px_40px_rgba(0,0,0,0.22)]`}
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3 dark:border-white/10 blueprint:border-white/15">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--zt-border) bg-(--zt-chrome) px-4 py-2">
           <input
             ref={titleInputRef}
             value={title}
@@ -214,23 +222,23 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
             onKeyDown={handleTitleKeyDown}
             placeholder="Untitled"
             aria-label="Note title"
-            className="min-w-0 flex-1 truncate border-none bg-transparent text-lg font-bold text-zinc-900 outline-none placeholder:font-normal placeholder:text-zinc-300 dark:text-white dark:placeholder:text-white/25 blueprint:text-white blueprint:placeholder:text-white/30"
+            className="min-w-0 flex-1 truncate border-none bg-transparent text-[15px] font-semibold text-(--zt-text) outline-none placeholder:font-normal placeholder:text-(--zt-dim)"
           />
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={closeDiscardingChanges}
-              className="rounded-full px-4 py-1.5 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+              className="zt-btn"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={closeKeepingChanges}
-              className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:text-white blueprint:hover:bg-white/10"
+              className="zt-btn zt-btn-primary"
             >
               Save
-              <kbd className="rounded bg-black/10 px-1.5 py-0.5 text-[11px] font-sans font-normal dark:bg-white/10 blueprint:bg-white/10">
+              <kbd className="rounded-sm bg-white/20 px-1 text-[11px] font-sans font-normal">
                 ⌘↵
               </kbd>
             </button>
@@ -242,9 +250,7 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-2 -outline-offset-4 outline-dashed transition-[outline-color] [scrollbar-width:thin] [scrollbar-color:#d4d4d8_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-white/15 blueprint:[&::-webkit-scrollbar-thumb]:bg-white/20 ${
-            isDragOver ? "outline-blue-400 blueprint:outline-white" : "outline-transparent"
-          }`}
+          className={`zt-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5 outline-2 -outline-offset-4 outline-dashed transition-[outline-color] ${isDragOver ? "outline-(--zt-accent)" : "outline-transparent"}`}
         >
           <RichTextEditor
             content={initialBodyContent}
@@ -259,11 +265,11 @@ export default function NoteEditorModal({ note }: NoteEditorModalProps) {
             `whitespace-nowrap`), so without a way to scroll sideways,
             anything past the visible width would just be unreachable
             rather than merely off-screen. */}
-        <div className="shrink-0 overflow-x-auto border-t border-zinc-100 px-3 py-2 dark:border-white/10 blueprint:border-white/15">
+        <div className="shrink-0 overflow-x-auto border-t border-(--zt-border) bg-(--zt-chrome) px-3 py-1.5">
           <Toolbar editor={activeEditor} />
         </div>
       </div>
     </div>,
-    document.body,
+    dockedIn ?? document.body,
   );
 }

@@ -79,6 +79,24 @@ is the standard Supabase pattern for "extra data about a user."
 | `target_handle` | text, nullable | |
 | `created_at` | timestamptz | default `now()` |
 
+### `board_files`
+
+*(Board files, links and the reader — see §6b.)*
+
+| column | type | notes |
+|---|---|---|
+| `id` | uuid, PK | default `gen_random_uuid()`; the client generates it so the row and its upload share one id |
+| `board_id` | uuid, FK → `boards.id` (`on delete cascade`) | |
+| `name` | text | the title shown in the sidebar, 1–200 characters; the only column a client may update |
+| `kind` | text | `'file'` (bytes in Storage) or `'link'` (just an address); default `'file'` |
+| `mime_type` | text, nullable | one of the ten allowed types for a file (PDF; PNG/JPEG/WebP/GIF; plain text; Markdown; `.docx`; `.pptx`; EPUB), `null` for a link |
+| `url` | text, nullable | a link's `http(s)` address, no spaces, at most 2000 characters; `null` for a file |
+| `size_bytes` | bigint | 1 byte to 20 MiB for a file; `0` for a link |
+| `storage_path` | text, **generated** | `<board_id>/<id>.<ext>` for a file (extension from the type), `null` for a link; never sent by the client, so a row and its stored file can't disagree about where the file is |
+| `created_at` | timestamptz | default `now()`; the sidebar's order |
+
+One check, `board_files_shape`, says a row is exactly a valid file *or* exactly a valid link — a half-filled row can't exist.
+
 ## 3. Relationships
 
 ```
@@ -86,6 +104,7 @@ auth.users (1) ──── (1) profiles
 auth.users (1) ──── (∞) boards
 boards     (1) ──── (∞) nodes
 boards     (1) ──── (∞) edges
+boards     (1) ──── (∞) board_files   (each with one object in Storage)
 nodes      (1) ──── (∞) edges   (as source)
 nodes      (1) ──── (∞) edges   (as target)
 ```
@@ -251,6 +270,63 @@ identity with `getUser()`) and `app/api/stripe/webhook/route.ts` (writes
 `plan`/`stripe_subscription_id` when Stripe's signed event payload says a
 subscription changed — see `docs/architecture.md` §3 for why this route
 in particular has no session to check at all).
+
+## 6b. Board files and links (up to 10 items per board)
+
+Two migrations, both purely additive (`boards`, `nodes` and `edges` are
+untouched, so nothing that reads them — including the ScriptumOS Mac app —
+is affected):
+
+- `20261028120000_board_files.sql` — the table, the ten-item trigger, the
+  private bucket and its policies; PDFs only.
+- `20261028150000_board_files_more_types.sql` — images, text, Markdown,
+  Word, PowerPoint, EPUB, and web links. Adds `kind` and `url`, replaces the
+  PDF-only checks with `board_files_shape`, widens the bucket's allowed
+  types, and redefines `storage_path` so the extension follows the type.
+  Existing PDF rows keep exactly the same path (verified by upgrading a
+  database that already held a PDF row and its object). SVG is deliberately
+  not allowed (it can carry script), nor the legacy binary `.doc`/`.ppt`.
+
+The app copes with a database that has only the first: the list falls back
+to the first migration's columns and reads every row as a PDF, adding a PDF
+still works, and anything else says which migration to apply.
+
+- **Bytes live in Storage, the list lives here.** A private bucket,
+  `board-files` (20 MiB per object, PDFs only), holds the files; the
+  `board_files` table holds name, size and board. A file is never public —
+  the reader asks for a one-hour signed link each time it opens one.
+- **At most ten per board** (links count too), in two layers like §6: the
+  sidebar disables "Add" at ten (`MAX_FILES_PER_BOARD` in
+  `lib/files/file-helpers.ts`), and
+  `enforce_board_file_limit()` — a `before insert` trigger — raises `P0001`
+  for an eleventh. It runs with the caller's rights, so counting is subject
+  to RLS and can't reveal whether *someone else's* board is full.
+- **RLS:** `board_files_owner_all`, ownership inherited from the board (the
+  `nodes` pattern). A client may update only `name` (column-level grant), so
+  a row can't be moved to another board or lie about its size.
+- **Storage policies** (on `storage.objects`, bucket `board-files`):
+  *upload* is accepted only at a path that already has a `board_files` row —
+  so the limit and size checks above also bound what can reach Storage;
+  *read* is allowed to whoever can see the row, or to the uploader;
+  *delete* is the uploader's alone, row or not, so leftovers can be removed.
+- **What a file really is** is decided from its *contents*
+  (`identifyFile`), not its name or the browser's reported type; the upload
+  is re-wrapped with that type, because Storage checks the file's own type
+  against the bucket and browsers report none for `.epub`/`.md`.
+- **Order of operations** (`lib/supabase/board-files.ts`): add = insert the
+  row, then upload, and delete the row again if the upload fails; remove =
+  delete the object (a link has none), then the row (a retry of a half-done
+  removal just works). Deleting a *board* removes its rows by cascade, but Storage
+  objects can't be deleted from SQL, so `deleteBoard` clears them first —
+  best effort, and it never blocks the board deletion.
+- **Not applied yet?** Until the migration runs, the sidebar shows "File
+  storage isn't set up yet" (the table lookup fails with `PGRST205`/`42P01`,
+  or the bucket with "Bucket not found") and the board works as before.
+  Merging to `master` applies it through `deploy-database.yml`.
+- The migration skips the bucket and Storage policies, with a notice, on a
+  database that has no `storage` schema (a bare Postgres); Supabase always
+  has one. `tests/db/supabase-shim.sql` carries a minimal stand-in so
+  `npm run test:db` exercises those policies locally.
 
 ## 7. Primary keys, foreign keys, CRUD — quick reference
 

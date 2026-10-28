@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import AuthShell from "@/components/ui/AuthShell";
 
 // Error boundaries must be Client Components. `app/error.tsx` wraps
 // every page and layout under `app/` (this one included) in a React
@@ -26,29 +27,18 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="blueprint-grid flex min-h-screen flex-col items-center justify-center gap-3 bg-zinc-50 px-4 text-center dark:bg-zinc-950 blueprint:bg-background">
-      <h1 className="text-lg font-semibold text-zinc-900 dark:text-white blueprint:font-mono blueprint:text-white">
-        Something went wrong
-      </h1>
-      <p className="max-w-xs text-sm text-zinc-500 dark:text-white/50 blueprint:text-white/70">
-        An unexpected error occurred. You can try again, or head back to your
-        boards.
+    <AuthShell title="Something went wrong">
+      <p className="mb-4 text-(--zt-dim)">
+        An unexpected error occurred. You can try again, or head back to your boards.
       </p>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={retry}
-          className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
-        >
+      <div className="flex gap-2">
+        <button type="button" onClick={retry} className="zt-btn zt-btn-primary h-7 flex-1">
           Try again
         </button>
-        <Link
-          href="/"
-          className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-white/10 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white blueprint:border-white/20 blueprint:text-white/70 blueprint:hover:border-white/40 blueprint:hover:text-white"
-        >
+        <Link href="/" className="zt-btn h-7 flex-1">
           Back to your boards
         </Link>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -82,7 +82,7 @@ const ALIGNMENTS: Array<{ label: string; value: Alignment; title: string }> = [
 ];
 
 function Divider() {
-  return <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-white/15 blueprint:bg-white/25" />;
+  return <span className="mx-1 h-4 w-px shrink-0 bg-(--zt-border)" />;
 }
 
 function Button({
@@ -117,10 +117,10 @@ function Button({
       // before the click handler ever runs the formatting command.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className={`min-w-[1.75rem] shrink-0 rounded px-1.5 py-1 text-xs font-medium leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
+      className={`min-w-7 shrink-0 rounded px-1.5 py-1 text-[12px] font-medium leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
         active
-          ? "bg-zinc-200 text-zinc-900 dark:bg-white/20 dark:text-white blueprint:bg-white/25 blueprint:text-white"
-          : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+          ? "bg-(--zt-hover) text-(--zt-text)"
+          : "text-(--zt-dim) hover:bg-(--zt-hover) hover:text-(--zt-text)"
       }`}
     >
       {children}
@@ -218,7 +218,7 @@ function ColorMenu({
         aria-expanded={isOpen}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onToggle}
-        className="flex shrink-0 flex-col items-center gap-0.5 rounded px-1.5 py-1 leading-none text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white blueprint:text-white/60 blueprint:hover:bg-white/10 blueprint:hover:text-white"
+        className="flex shrink-0 flex-col items-center gap-0.5 rounded px-1.5 py-1 leading-none text-(--zt-dim) transition-colors hover:bg-(--zt-hover) hover:text-(--zt-text)"
       >
         <span className="text-xs font-bold">{letter}</span>
         <span
@@ -232,7 +232,7 @@ function ColorMenu({
           <div
             ref={menuRef}
             style={{ position: "fixed", top: position.top, left: position.left, transform: "translateY(-100%)" }}
-            className="z-50 mb-2 flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-white/10 dark:bg-zinc-800 blueprint:border-white/20 blueprint:bg-[#0f3057]"
+            className="z-50 mb-2 flex items-center gap-1 rounded border border-(--zt-border) bg-(--zt-chrome) p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.18)]"
           >
             {children}
           </div>,
@@ -363,7 +363,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             editor?.chain().focus().unsetFontFamily().run();
           }
         }}
-        className="nodrag shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 dark:text-white/60 dark:hover:bg-white/10 blueprint:text-white/70 blueprint:hover:bg-white/10"
+        className="nodrag shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-[12px] text-(--zt-text) hover:bg-(--zt-hover) disabled:cursor-not-allowed disabled:opacity-30"
       >
         {FONT_FAMILIES.map((font) => (
           <option key={font.label} value={font.value} style={{ fontFamily: font.value || undefined }}>
@@ -399,9 +399,9 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
             const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, parsed));
             editor?.chain().focus().setFontSize(`${clamped}px`).run();
           }}
-          className="nodrag w-9 shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-center text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none dark:text-white/60 dark:hover:bg-white/10 blueprint:text-white/70 blueprint:hover:bg-white/10"
+          className="nodrag w-9 shrink-0 rounded border border-transparent bg-transparent px-1 py-1 text-center text-[12px] text-(--zt-text) hover:bg-(--zt-hover) disabled:cursor-not-allowed disabled:opacity-30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
-        <span className="text-[10px] text-zinc-400 dark:text-white/30 blueprint:text-white/40">px</span>
+        <span className="text-[10px] text-(--zt-dim)">px</span>
       </div>
 
       <Divider />
@@ -469,10 +469,10 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
               }
               setOpenMenu(null);
             }}
-            className={`h-4 w-4 shrink-0 rounded-full border transition-transform disabled:cursor-not-allowed disabled:opacity-30 ${
+            className={`h-4 w-4 shrink-0 rounded-sm border transition-transform disabled:cursor-not-allowed disabled:opacity-30 ${
               state.color === color.value
-                ? "scale-110 border-zinc-500 dark:border-white blueprint:border-white"
-                : "border-zinc-200 hover:scale-110 dark:border-white/30 blueprint:border-white/40"
+                ? "scale-110 border-(--zt-text)"
+                : "border-(--zt-field-border) hover:scale-110"
             }`}
             style={{ backgroundColor: color.value ?? "#ffffff" }}
           />
@@ -500,7 +500,7 @@ export default function Toolbar({ editor }: { editor: Editor | null }) {
               editor?.chain().focus().toggleHighlight({ color: color.value }).run();
               setOpenMenu(null);
             }}
-            className="h-4 w-4 shrink-0 rounded-full border border-zinc-200 transition-transform disabled:cursor-not-allowed disabled:opacity-30 hover:scale-110 dark:border-white/30 blueprint:border-white/40"
+            className="h-4 w-4 shrink-0 rounded-sm border border-(--zt-field-border) transition-transform disabled:cursor-not-allowed disabled:opacity-30 hover:scale-110"
             style={{ backgroundColor: color.value }}
           />
         ))}

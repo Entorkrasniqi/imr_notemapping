@@ -40,6 +40,8 @@ Every table has RLS on. The policies (from `supabase/migrations/`):
 | `boards` | Owner | Owner; `user_id` is set by Postgres from the token, and can't be changed to someone else |
 | `nodes` | Owner of the board | Owner of the board; a note can't be moved into someone else's board |
 | `edges` | Owner of the board | Owner of the board, and both notes must be on that same board |
+| `board_files` | Owner of the board | Owner of the board; only `name` can be changed, so an item can't be moved to another board or change type |
+| `storage.objects` (bucket `board-files`) | The uploader, or whoever can see the file's row | Upload only at a path that already has a `board_files` row; delete by the uploader |
 | `profiles` | Only your own row | Nobody through the API — `plan` changes only via the Stripe webhook (service role) |
 
 Enforced in the database, not in the app:
@@ -48,6 +50,13 @@ Enforced in the database, not in the app:
   serialized per user so concurrent requests can't slip past it.
 - **Same-board edges** — composite foreign keys (added 2026-09-29, §6).
 - **Board name length** — 1 to 200 characters.
+- **Ten items per board, 20 MiB per file, a fixed list of types** — a
+  trigger and the `board_files_shape` check; Storage only accepts an upload
+  at a path that already has a row, so the limit can't be bypassed by
+  talking to Storage directly. The bucket is private; files are read through
+  one-hour signed links. A link's address must be `http(s)`, so a
+  `javascript:` or `data:` address can't be stored even by a hand-made
+  request.
 
 **Tested** by `tests/db/rls.test.sql`, which acts as other users and as an
 anonymous visitor and tries every cross-user read and write — in CI on
@@ -71,6 +80,7 @@ Set per request in `proxy.ts`, built in `lib/security/headers.ts`:
 | `style-src` | `'self' 'unsafe-inline'` | React Flow positions every note with inline styles, and note previews carry Tiptap's inline colors. Nonces don't apply to style attributes, so this can't be stricter without breaking the canvas. Styles can't run code. |
 | `img-src` | `'self' data: blob:` | Images embedded in notes. Remote images are blocked, so pasted content can't load tracking pixels. |
 | `connect-src` | `'self'` + the Supabase project (`https`/`wss`) | Where the page may send data. |
+| `worker-src` | `'self' blob:` | The PDF reader (pdf.js) parses files in a Web Worker. Workers fall back to `script-src`, where `'strict-dynamic'` ignores `'self'`, so they need their own directive. Still no third-party origin. |
 | `form-action` | `'self'` + Stripe Checkout/Billing | Browsers apply this to redirects after a form post, and the billing forms end up at Stripe. |
 | `frame-ancestors` | `'none'` | Can't be framed (clickjacking). |
 | `object-src`, `base-uri` | `'none'`, `'self'` | No plugins; no `<base>` tag redirecting relative URLs. |
@@ -87,6 +97,29 @@ Set on every response in `next.config.ts`: `Strict-Transport-Security`
 (board URLs contain board ids), `Permissions-Policy` denying camera,
 microphone, geolocation, payment and USB, and
 `Cross-Origin-Opener-Policy: same-origin`. `X-Powered-By` is off.
+
+### Uploaded documents
+
+Documents in the reader are other people's markup, so none of it is trusted:
+
+- **Word and EPUB** are converted to HTML and pass through DOMPurify
+  (`components/files/sanitize.ts`) before reaching the page: scripts, event
+  handlers, `javascript:` addresses, frames, forms, SVG and inline styles are
+  dropped. Links open in a new tab with `noopener noreferrer`. An EPUB's
+  pictures are re-created from the zip as `blob:` URLs; remote images are
+  removed (the CSP would block them anyway).
+- **Markdown** is rendered by react-markdown, which builds elements itself
+  and never parses raw HTML in the text; unsafe link schemes are dropped and
+  images shown as their alt text.
+- **Text** is shown as text. **PowerPoint** is read as text only.
+- **Images** are shown from a `blob:` URL; SVG isn't accepted.
+- The CSP is the second wall: no inline script or handler runs. A hostile
+  EPUB's `onclick` makes Chrome log "Executing inline event handler" when
+  it is parsed — the CSP refusing it, not a problem.
+- **A zip bomb** (a tiny EPUB/DOCX/PPTX that expands enormously) isn't
+  defended against beyond the 20 MiB upload cap and a 5M-character cap per
+  EPUB chapter; the worst case is a slow or crashed tab for the person who
+  uploaded it, in their own browser.
 
 ### Rich text
 

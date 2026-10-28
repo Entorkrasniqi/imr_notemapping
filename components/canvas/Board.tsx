@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -25,6 +25,9 @@ import "@xyflow/react/dist/style.css";
 import NoteNode from "./NoteNode";
 import DeletableEdge from "./DeletableEdge";
 import NoteEditorModal from "./NoteEditorModal";
+import FilesPanel from "@/components/files/FilesPanel";
+import { LogoMark } from "@/components/brand/Logo";
+import { ChevronIcon, FitViewIcon, LogOutIcon, NewNoteIcon } from "@/components/ui/icons";
 import { ActiveEditorProvider, useActiveEditor } from "@/lib/editor/active-editor-context";
 import { RecordBeforeChangeProvider, useBoardHistory } from "@/hooks/useBoardHistory";
 import { useSupabaseBoardSync } from "@/hooks/useSupabaseBoardSync";
@@ -38,8 +41,8 @@ import type { BoardEdge, NoteNode as NoteNodeType } from "@/types/canvas";
 // way `dark:`/`blueprint:` utilities do everywhere else in this app, so
 // each theme's canvas dot color and minimap tint has to be picked in JS.
 const CANVAS_COLORS: Record<Theme, { dots: string; minimapNode: string; minimapMask: string }> = {
-  light: { dots: "#d4d4d8", minimapNode: "#d4d4d8", minimapMask: "rgba(244, 244, 245, 0.6)" },
-  dark: { dots: "#3f3f46", minimapNode: "#52525b", minimapMask: "rgba(9, 9, 11, 0.6)" },
+  light: { dots: "#d4d4d4", minimapNode: "#c8c8c8", minimapMask: "rgba(240, 240, 240, 0.65)" },
+  dark: { dots: "#3a3a3a", minimapNode: "#555555", minimapMask: "rgba(20, 20, 20, 0.65)" },
   blueprint: { dots: "rgba(255, 255, 255, 0.25)", minimapNode: "rgba(255, 255, 255, 0.4)", minimapMask: "rgba(15, 48, 87, 0.6)" },
 };
 
@@ -50,7 +53,7 @@ const edgeTypes = { deletable: DeletableEdge };
 // set `type`/`markerEnd` by hand each time in `onConnect`.
 const defaultEdgeOptions: DefaultEdgeOptions = {
   type: "deletable",
-  markerEnd: { type: MarkerType.ArrowClosed, color: "#a1a1aa" },
+  markerEnd: { type: MarkerType.ArrowClosed, color: "#8c8c8c" },
 };
 
 const DEFAULT_NOTE_WIDTH = 240;
@@ -94,7 +97,12 @@ function createNote(center: { x: number; y: number }): NoteNodeType {
  * placing a new note.
  */
 function FlowCanvas({ boardId }: { boardId: string }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  // The board pane's element, as state rather than a ref: the note editor
+  // docks into it while a PDF is open (see `dockIn` below), and a ref can't
+  // be read during render.
+  const [canvasPane, setCanvasPane] = useState<HTMLDivElement | null>(null);
+  // Whether a file is open in the reader beside the board (the note editor docks beside it).
+  const [readerOpen, setReaderOpen] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -170,6 +178,10 @@ function FlowCanvas({ boardId }: { boardId: string }) {
         return;
       }
       if (editingNoteId) return;
+      // Typing in a plain text field (renaming a file in the sidebar, the
+      // reader's page box) keeps its own undo; Ctrl/Cmd+Z there must not
+      // also undo the board.
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       const isModPressed = event.metaKey || event.ctrlKey;
       if (!isModPressed) return;
       const key = event.key.toLowerCase();
@@ -264,12 +276,12 @@ function FlowCanvas({ boardId }: { boardId: string }) {
   );
 
   const handleAddNoteButtonClick = useCallback(() => {
-    const bounds = wrapperRef.current?.getBoundingClientRect();
+    const bounds = canvasPane?.getBoundingClientRect();
     const center = bounds
       ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
       : { x: 400, y: 300 };
     addNoteAtScreenPoint(center.x, center.y);
-  }, [addNoteAtScreenPoint]);
+  }, [canvasPane, addNoteAtScreenPoint]);
 
   // Double-click-to-create is implemented as a plain DOM handler on the
   // wrapper div rather than a React Flow prop, because React Flow doesn't
@@ -321,165 +333,142 @@ function FlowCanvas({ boardId }: { boardId: string }) {
 
   return (
     <RecordBeforeChangeProvider value={recordBeforeChange}>
-      <div
-        ref={wrapperRef}
-        className="relative h-screen w-screen bg-zinc-50 dark:bg-zinc-950 blueprint:bg-background"
-        onDoubleClick={handleWrapperDoubleClick}
-        onDragOver={handleWrapperDragOver}
-        onDrop={handleWrapperDrop}
-      >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={handleConnect}
-          onNodeClick={handleNodeClick}
-          onNodeDragStart={recordBeforeChange}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          defaultEdgeOptions={defaultEdgeOptions}
-          // Every handle in NoteNode is `type="source"`; loose mode is what
-          // allows a source-to-source connection to form an edge at all.
-          connectionMode={ConnectionMode.Loose}
-          // React Flow zooms in on double-click by default; we've repurposed
-          // double-click to create a note instead, so that default must go.
-          zoomOnDoubleClick={false}
-          deleteKeyCode={["Backspace", "Delete"]}
-          minZoom={0.1}
-          maxZoom={2}
-          fitView={false}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={canvasColors.dots} />
-          <Controls showInteractive={false} />
-          {/* Default position (bottom-right) pairs with Controls' default
-              (bottom-left) below — the conventional, non-colliding layout
-              most React Flow boards use. */}
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={canvasColors.minimapNode}
-            maskColor={canvasColors.minimapMask}
-          />
-        </ReactFlow>
-
-        {/* `flex-wrap` here (and on the button group below) is what
-            keeps this from overflowing off-screen on a narrow viewport —
-            confirmed by actually testing at 380px width, where "Log out"
-            was previously clipped entirely off the right edge with no
-            way to reach it. Wrapping to a second line beats that, even
-            though it isn't as polished as a dedicated narrow layout
-            would be (out of scope here — see Phase 15 for real
-            touch/mobile work; this is just "don't break," per Phase 8's
-            breakpoints-not-touch scope). */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4">
-          <div className="pointer-events-auto flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
-              title="Back to your boards"
-            >
-              ← NoteMap
+      {/* Files sidebar and PDF reader on the left, the board filling the
+          rest — so a PDF can be read while notes are written and the map is
+          built. The board pane is a plain div beside them, not a layer over
+          them, which is what lets React Flow keep sizing itself to it. */}
+      <div className="flex h-screen w-screen">
+        <FilesPanel boardId={boardId} onReaderOpenChange={setReaderOpen} />
+        <div className="flex h-full min-w-0 flex-1 flex-col bg-(--zt-window)">
+          {/* The board's toolbar: back to the boards on the left, the
+              actions next to it, appearance and account on the right — a
+              real bar across the top of the pane, like Zotero's, in place
+              of the floating buttons. It's a container, so button labels
+              appear only when the pane is wide enough for them (the pane
+              narrows when the reader opens beside it); the icons and
+              their accessible names are always there. */}
+          <header className="zt-toolbar @container h-auto min-h-9 shrink-0 flex-wrap gap-y-1 py-1">
+            <Link href="/" title="Back to your boards" aria-label="Back to your boards" className="zt-tbtn gap-1.5 pl-1">
+              <ChevronIcon direction="left" className="h-3.5 w-3.5" />
+              <LogoMark size={16} />
+              <span className="hidden font-semibold @xl:inline">NoteMap</span>
             </Link>
+            <span className="zt-sep" />
+            <button type="button" onClick={handleAddNoteButtonClick} aria-label="Add note" title="Add note" className="zt-tbtn">
+              <NewNoteIcon />
+              <span className="hidden @xl:inline">Add note</span>
+            </button>
+            <button type="button" onClick={handleFitViewClick} aria-label="Fit view" title="Fit all notes in view" className="zt-tbtn">
+              <FitViewIcon />
+              <span className="hidden @xl:inline">Fit view</span>
+            </button>
             {/* `aria-live="polite"` so a screen reader announces a status
                 change without needing focus here — and renders nothing at
                 all for "idle", so this doesn't add permanent visual noise
-                to the header for the (most common) case of "nothing to
-                report right now." */}
-            <p
-              aria-live="polite"
-              className="text-xs font-medium text-zinc-400 dark:text-white/40 blueprint:text-white/60"
-            >
+                for the (most common) case of "nothing to report". Never
+                hidden for width: "Couldn't save" has to be seen. */}
+            <p aria-live="polite" className="ml-2 min-w-0 truncate text-[12px] text-(--zt-dim)">
               {saveStatus === "saving" && "Saving…"}
               {saveStatus === "saved" && "Saved"}
               {saveStatus === "error" && "Couldn't save — will retry on your next change"}
             </p>
-          </div>
-          <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+            <span className="flex-1" />
             <ThemeToggle />
-            <button
-              type="button"
-              onClick={handleFitViewClick}
-              title="Fit all notes in view"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
-            >
-              Fit view
+            <button type="button" onClick={handleLogoutClick} aria-label="Log out" title="Log out" className="zt-tbtn">
+              <LogOutIcon />
+              <span className="hidden @xl:inline">Log out</span>
             </button>
-            <button
-              type="button"
-              onClick={handleAddNoteButtonClick}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:text-white blueprint:hover:bg-white/10"
-            >
-              + Add note
-            </button>
-            <button
-              type="button"
-              onClick={handleLogoutClick}
-              title="Log out"
-              className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition-colors hover:bg-zinc-100 dark:bg-zinc-900/80 dark:text-white/70 dark:hover:bg-zinc-800 blueprint:bg-white/10 blueprint:text-white blueprint:hover:bg-white/20"
-            >
-              Log out
-            </button>
-          </div>
+          </header>
+
+        <div
+          ref={setCanvasPane}
+          className="relative min-h-0 flex-1 bg-(--zt-canvas)"
+          onDoubleClick={handleWrapperDoubleClick}
+          onDragOver={handleWrapperDragOver}
+          onDrop={handleWrapperDrop}
+        >
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            onNodeClick={handleNodeClick}
+            onNodeDragStart={recordBeforeChange}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            // Every handle in NoteNode is `type="source"`; loose mode is what
+            // allows a source-to-source connection to form an edge at all.
+            connectionMode={ConnectionMode.Loose}
+            // React Flow zooms in on double-click by default; we've repurposed
+            // double-click to create a note instead, so that default must go.
+            zoomOnDoubleClick={false}
+            deleteKeyCode={["Backspace", "Delete"]}
+            minZoom={0.1}
+            maxZoom={2}
+            fitView={false}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={canvasColors.dots} />
+            <Controls showInteractive={false} />
+            {/* Default position (bottom-right) pairs with Controls' default
+                (bottom-left) below — the conventional, non-colliding layout
+                most React Flow boards use. */}
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={canvasColors.minimapNode}
+              maskColor={canvasColors.minimapMask}
+            />
+          </ReactFlow>
+
+          {boardStatus === "loading" && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <p className="text-(--zt-dim)">Loading your board…</p>
+            </div>
+          )}
+
+          {boardStatus === "error" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[color-mix(in_srgb,var(--zt-canvas)_85%,transparent)]">
+              <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                <p className="text-(--zt-dim)">Couldn&apos;t reach the database.</p>
+                <button type="button" onClick={retryBoardLoad} className="zt-btn">
+                  Try again
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Reachable if this board was deleted (in another tab, or by
+              this same user earlier) while something still links to its
+              URL — see BoardNotFoundError in lib/supabase/board-sync.ts. */}
+          {boardStatus === "not-found" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[color-mix(in_srgb,var(--zt-canvas)_85%,transparent)]">
+              <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                <p className="text-(--zt-dim)">This board doesn&apos;t exist, or isn&apos;t yours.</p>
+                <Link href="/" className="zt-btn zt-btn-primary">
+                  Back to your boards
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* Gated on `boardStatus === "ready"` so this can't flash on
+              screen while the real (possibly non-empty) board is still
+              loading — it should only ever mean "this board is genuinely
+              empty," not "we don't know yet." */}
+          {boardStatus === "ready" && nodes.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <p className="text-(--zt-dim)">Double-click anywhere, or press “Add note”, to create your first note.</p>
+            </div>
+          )}
+
+          {/* With a file open in the reader the editor docks over the board
+              pane instead of covering the whole screen, so the file stays
+              readable beside it. */}
+          {editingNote && <NoteEditorModal note={editingNote} dockIn={readerOpen ? canvasPane : null} />}
         </div>
-
-        {boardStatus === "loading" && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-zinc-400 dark:text-white/40 blueprint:text-white/60">
-              Loading your board…
-            </p>
-          </div>
-        )}
-
-        {boardStatus === "error" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80 dark:bg-zinc-950/80 blueprint:bg-background/90">
-            <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
-                Couldn&apos;t reach the database.
-              </p>
-              <button
-                type="button"
-                onClick={retryBoardLoad}
-                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
-              >
-                Try again
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Reachable if this board was deleted (in another tab, or by
-            this same user earlier) while something still links to its
-            URL — see BoardNotFoundError in lib/supabase/board-sync.ts. */}
-        {boardStatus === "not-found" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80 dark:bg-zinc-950/80 blueprint:bg-background/90">
-            <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-zinc-600 dark:text-white/60 blueprint:text-white/80">
-                This board doesn&apos;t exist, or isn&apos;t yours.
-              </p>
-              <Link
-                href="/"
-                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 blueprint:border blueprint:border-white/40 blueprint:bg-transparent blueprint:hover:bg-white/10"
-              >
-                Back to your boards
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Gated on `boardStatus === "ready"` so this can't flash on
-            screen while the real (possibly non-empty) board is still
-            loading — it should only ever mean "this board is genuinely
-            empty," not "we don't know yet." */}
-        {boardStatus === "ready" && nodes.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-zinc-400 dark:text-white/40 blueprint:text-white/60">
-              Double-click anywhere, or press “+ Add note”, to create your first note.
-            </p>
-          </div>
-        )}
-
-        {editingNote && <NoteEditorModal note={editingNote} />}
+        </div>
       </div>
     </RecordBeforeChangeProvider>
   );
