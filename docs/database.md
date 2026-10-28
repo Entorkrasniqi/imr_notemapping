@@ -318,7 +318,10 @@ still works, and anything else says which migration to apply.
   delete the object (a link has none), then the row (a retry of a half-done
   removal just works). Deleting a *board* removes its rows by cascade, but Storage
   objects can't be deleted from SQL, so `deleteBoard` clears them first —
-  best effort, and it never blocks the board deletion.
+  best effort, and it never blocks the board deletion. Every client that can
+  delete a board has to do this: the Mac app's `BoardsAPI.deleteBoard` does
+  (`macos/NoteMapTests/BoardDeletionTests.swift`); a client that doesn't leaves
+  files nobody can remove, because the Storage policies need the row.
 - **Not applied yet?** Until the migration runs, the sidebar shows "File
   storage isn't set up yet" (the table lookup fails with `PGRST205`/`42P01`,
   or the bucket with "Bucket not found") and the board works as before.

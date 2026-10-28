@@ -90,8 +90,33 @@ enum BoardsAPI {
         )
     }
 
-    /// `on delete cascade` on nodes/edges handles the rest.
+    /// `on delete cascade` on nodes/edges (and board_files) handles the rest
+    /// of the database; the uploaded files live in Storage and need removing
+    /// by hand, first — Storage lets a user delete a file only while its
+    /// `board_files` row still exists. Same order as `deleteBoard` on the web.
     static func deleteBoard(_ client: SupabaseClient, id: String) async throws {
+        await removeStoredFiles(client, boardID: id)
         _ = try await client.rest("DELETE", "boards", query: [URLQueryItem(name: "id", value: "eq.\(id)")])
+    }
+
+    /// Bucket the web app uploads board files to (`BOARD_FILES_BUCKET`).
+    static let boardFilesBucket = "board-files"
+
+    /// Best effort, like the web: a board must stay deletable where file
+    /// storage isn't set up (no `board_files` table yet) or Storage is down.
+    /// The worst case is some unreachable bytes, not a board that can't go.
+    /// Links have no `storage_path`, so only real uploads are removed.
+    private static func removeStoredFiles(_ client: SupabaseClient, boardID: String) async {
+        struct Row: Decodable { let storage_path: String? }
+        do {
+            let data = try await client.rest("GET", "board_files", query: [
+                URLQueryItem(name: "select", value: "storage_path"),
+                URLQueryItem(name: "board_id", value: "eq.\(boardID)"),
+            ])
+            let paths = try JSONDecoder().decode([Row].self, from: data).compactMap(\.storage_path).filter { !$0.isEmpty }
+            try await client.removeStorageObjects(bucket: boardFilesBucket, paths: paths)
+        } catch {
+            // Intentionally ignored; see above.
+        }
     }
 }

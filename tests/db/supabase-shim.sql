@@ -54,3 +54,20 @@ create table storage.objects (
   created_at timestamptz not null default now()
 );
 alter table storage.objects enable row level security;
+
+-- Real Storage refuses plain SQL deletes from its tables ("use the Storage
+-- API"); the API lifts that for its own statements by setting this setting,
+-- and the RLS policies then decide what may go. Mirror it, so a test that
+-- forgets the setting fails here the way it does against the real image
+-- in CI.
+create function storage.protect_delete() returns trigger language plpgsql as $$
+begin
+  if coalesce(current_setting('storage.allow_delete_query', true), 'false') <> 'true' then
+    raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+      using hint = 'This prevents accidental data loss from orphaned objects.', errcode = '42501';
+  end if;
+  return null;
+end;
+$$;
+create trigger protect_objects_delete before delete on storage.objects
+  for each statement execute function storage.protect_delete();

@@ -43,13 +43,20 @@ final class SupabaseClient: @unchecked Sendable {
     /// for `proxy.ts` redirecting a signed-out request to `/login`.
     var onSessionExpired: (@MainActor () -> Void)?
 
-    init(config: AppConfig) {
+    convenience init(config: AppConfig) {
+        self.init(config: config, keychain: nil, protocolClasses: [])
+    }
+
+    /// `keychain` and `protocolClasses` exist so tests can use a throwaway
+    /// Keychain item and a stubbed network; the app uses `init(config:)`.
+    init(config: AppConfig, keychain: KeychainItem?, protocolClasses: [AnyClass]) {
         self.config = config
         let bundleID = Bundle.main.bundleIdentifier ?? "com.scriptumos.ScriptumOS"
-        sessions = SessionStore(keychain: KeychainItem(service: "\(bundleID).auth", account: "supabase-session"))
+        sessions = SessionStore(keychain: keychain ?? KeychainItem(service: "\(bundleID).auth", account: "supabase-session"))
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
         configuration.waitsForConnectivity = false
+        if !protocolClasses.isEmpty { configuration.protocolClasses = protocolClasses }
         http = URLSession(configuration: configuration)
     }
 
@@ -176,7 +183,7 @@ final class SupabaseClient: @unchecked Sendable {
         return nil
     }
 
-    // MARK: - PostgREST
+    // MARK: - PostgREST and Storage
 
     /// One PostgREST request as the signed-in user. A 401 (the access token
     /// expired between the local check and the server's) is retried once
@@ -188,12 +195,23 @@ final class SupabaseClient: @unchecked Sendable {
         body: Data? = nil,
         prefer: String? = nil
     ) async throws -> Data {
-        try await restAttempt(method, table, query: query, body: body, prefer: prefer, forceRefresh: false)
+        try await attempt(method, path: "rest/v1/\(table)", query: query, body: body, prefer: prefer, forceRefresh: false)
     }
 
-    private func restAttempt(
+    /// Deletes objects from a Storage bucket, the call `supabase.storage
+    /// .from(bucket).remove(paths)` makes in the web app. Storage's own
+    /// policies decide which objects this user may remove.
+    func removeStorageObjects(bucket: String, paths: [String]) async throws {
+        guard !paths.isEmpty else { return }
+        _ = try await attempt(
+            "DELETE", path: "storage/v1/object/\(bucket)", query: [],
+            body: try JSONEncoder().encode(["prefixes": paths]), prefer: nil, forceRefresh: false
+        )
+    }
+
+    private func attempt(
         _ method: String,
-        _ table: String,
+        path: String,
         query: [URLQueryItem],
         body: Data?,
         prefer: String?,
@@ -208,7 +226,7 @@ final class SupabaseClient: @unchecked Sendable {
         }
 
         var components = URLComponents(
-            url: config.supabaseURL.appendingPathComponent("rest/v1/\(table)"),
+            url: config.supabaseURL.appendingPathComponent(path),
             resolvingAgainstBaseURL: false
         )!
         if !query.isEmpty { components.queryItems = query }
@@ -228,7 +246,7 @@ final class SupabaseClient: @unchecked Sendable {
         guard let status = (response as? HTTPURLResponse)?.statusCode else { throw SupabaseError.invalidResponse }
 
         if status == 401 && !forceRefresh {
-            return try await restAttempt(method, table, query: query, body: body, prefer: prefer, forceRefresh: true)
+            return try await attempt(method, path: path, query: query, body: body, prefer: prefer, forceRefresh: true)
         }
         guard (200..<300).contains(status) else {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
