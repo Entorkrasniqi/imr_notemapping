@@ -95,7 +95,7 @@ jobs:
       - name: Package
         run: ditto -c -k --keepParent "$APP" "ScriptumOS-${GITHUB_REF_NAME}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ScriptumOS
           path: macos/ScriptumOS-*.zip
