@@ -251,12 +251,34 @@ select rls_test.expect_rows($$select 1 from storage.objects where bucket_id = 'b
 select rls_test.expect_error($$insert into storage.objects (bucket_id, name)
   values ('board-files', '10000000-0000-4000-a000-00000000000a/40000000-0000-4000-a000-0000000000a2.pdf')$$, '42501',
   'Bob cannot upload into Alice''s board');
+-- Storage rejects any plain SQL delete outright ("use the Storage API"); the
+-- API sets this for its own statements, and the RLS policies then decide
+-- whose objects may go. Set it the same way, so this checks the policy.
+select set_config('storage.allow_delete_query', 'true', true);
 select rls_test.expect_affected($$delete from storage.objects where bucket_id = 'board-files'$$, 0, 'Bob cannot delete Alice''s object');
+select set_config('storage.allow_delete_query', 'false', true);
 reset role;
 
 select rls_test.act_as(null);
 select rls_test.expect_rows($$select 1 from storage.objects where bucket_id = 'board-files'$$, 0, 'Anonymous cannot read stored files');
 reset role;
+
+-- The delete policy needs the uploader's id on the object, which Storage
+-- records on upload. The inserts above went straight to SQL, so none is set:
+-- Alice can see these objects (her board lists the files) but isn't recorded
+-- as their uploader. This is the check Bob's delete above can't be: he never
+-- sees the objects, so the read policy stops him before this policy matters.
+select rls_test.act_as('00000000-0000-4000-a000-00000000000a');
+select set_config('storage.allow_delete_query', 'true', true);
+select rls_test.expect_affected($$delete from storage.objects where bucket_id = 'board-files'$$, 0,
+  'An object that does not record Alice as its uploader is not hers to delete');
+reset role;
+update storage.objects set owner_id = '00000000-0000-4000-a000-00000000000a' where bucket_id = 'board-files';
+select rls_test.act_as('00000000-0000-4000-a000-00000000000a');
+select rls_test.expect_affected($$delete from storage.objects where bucket_id = 'board-files'$$, 2,
+  'Alice can delete the objects she uploaded');
+reset role;
+select set_config('storage.allow_delete_query', 'false', true);
 \endif
 
 -- Deleting a board takes its notes and edges with it.
