@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistMono.variable} h-full antialiased`}
+      className={`${geistMono.variable} h-full`}
       // The theme-init script below sets `data-theme` on this element
       // before React hydrates, from localStorage the server has no way
       // to see — server and client HTML for this one attribute are

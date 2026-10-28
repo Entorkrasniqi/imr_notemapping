@@ -48,7 +48,8 @@ body {
      different size set it explicitly; nothing relies on rem scaling. */
   font-size: 13px;
   line-height: 1.35;
-  -webkit-font-smoothing: antialiased;
+  /* No `-webkit-font-smoothing: antialiased`: it thins text on macOS, and
+     Zotero's native text keeps the system's default, heavier rendering. */
 }
 
 /*
@@ -642,7 +643,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.3;
-  -webkit-font-smoothing: antialiased;
 }
 
 /* A quiet scroll bar for the panel and reader surfaces. */
